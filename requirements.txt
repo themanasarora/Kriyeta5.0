@@ -1,0 +1,10 @@
+sentence-transformers
+pandas
+scikit-learn
+torch
+transformers
+tqdm
+groq
+python-dotenv
+nltk
+datasets

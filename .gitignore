@@ -1,0 +1,10 @@
+env/
+__pycache__/
+*.pyc
+*.pkl
+*.h5
+*.pt
+checkpoints/
+processed/
+models/
+.env
