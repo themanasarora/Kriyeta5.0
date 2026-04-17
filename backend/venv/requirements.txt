@@ -1,0 +1,9 @@
+flask
+flask-cors
+groq
+python-dotenv
+pymongo
+pymupdf
+scikit-learn
+onnxruntime
+numpy
