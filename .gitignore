@@ -9,8 +9,8 @@ __pycache__/
 .env
 **/.env
 # Models
-**/onnx_model/
-onnx_model/
+# **/onnx_model/
+# onnx_model/
 .pytest_cache/
 htmlcov/
 .tox/
