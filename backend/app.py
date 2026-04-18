@@ -4,6 +4,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from groq import Groq
 from dotenv import load_dotenv
+from routes.github_profile import github_profile_bp
+from routes.leetcode_profile import leetcode_profile_bp
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "venv", ".env"))
 
@@ -11,6 +13,9 @@ app = Flask(__name__)
 CORS(app)
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY")) # fallback to key from aiinterview
+
+app.register_blueprint(github_profile_bp, url_prefix='/api')
+app.register_blueprint(leetcode_profile_bp, url_prefix='/api')
 
 @app.route("/api/analyze-resume", methods=["POST"])
 def analyze_resume():
@@ -50,6 +55,31 @@ def analyze_resume():
     except Exception as e:
         print("Groq error:", e)
         return jsonify({"error": "Failed to analyze resume"}), 500
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    data = request.json
+    messages = data.get("messages", [])
+    
+    if not messages:
+        return jsonify({"error": "No messages provided"}), 400
+
+    try:
+        # We pass the message history to Groq
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are Kriyeta AI, a professional interview coach and career assistant. You help users refine their resumes, prepare for mock interviews, and analyze their developer profiles on GitHub and LeetCode. Keep responses concise, professional, and helpful."},
+                *messages
+            ],
+            temperature=0.7,
+            max_tokens=800
+        )
+        ai_message = response.choices[0].message.content
+        return jsonify({"content": ai_message})
+    except Exception as e:
+        print("Chat error:", e)
+        return jsonify({"error": "AI could not respond"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
