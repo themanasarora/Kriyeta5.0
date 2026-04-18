@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import './index.css';
 import Sidebar from './components/Sidebar';
+import LandingPage from './components/LandingPage';
 import Login from './components/Login';
 import SetupScreen from './components/SetupScreen';
 import ATSReport from './components/ATSReport';
@@ -15,13 +16,13 @@ const AppLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const location = useLocation();
-  const isLoginPage = location.pathname === '/login';
+  const isAuthPage = location.pathname === '/' || location.pathname === '/login';
 
   return (
     <div className="main-layout">
-      {!isLoginPage && <Sidebar isSidebarOpen={isSidebarOpen} />}
-      <main className="main-content" style={isLoginPage ? { marginLeft: 0 } : {}}>
-        {!isLoginPage && (
+      {!isAuthPage && <Sidebar isSidebarOpen={isSidebarOpen} />}
+      <main className="main-content" style={isAuthPage ? { marginLeft: 0 } : {}}>
+        {!isAuthPage && (
           <button
             className="sidebar-toggle"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -42,9 +43,9 @@ const AppLayout = () => {
         )}
 
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/setup" element={<SetupScreen />} />
-          <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/ats" element={<ATSReport />} />
           <Route path="/interview" element={<InterviewRoom />} />
           <Route path="/profile" element={<ProfileAnalyzer />} />
@@ -53,7 +54,7 @@ const AppLayout = () => {
         </Routes>
 
         {/* Floating Web Assistant */}
-        {!isLoginPage && (
+        {!isAuthPage && (
           <>
             <Chatbot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
             {!isChatOpen && (

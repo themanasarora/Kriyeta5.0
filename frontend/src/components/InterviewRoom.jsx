@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useEyeContact } from '../hooks/useEyeContact';
+import InteractiveBackground from './InteractiveBackground';
 
 const FILLER_REGEX = /\b(um+|uh+|uhh+|hmm+|err+|like|you know|basically|literally|sort of|kind of|right\?|okay so)\b/gi;
 
@@ -424,7 +425,8 @@ const InterviewRoom = () => {
   // ─── RENDER: Feedback Phase ──────────────────────────────────────────────────
   if (phase === 'feedback') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
+      <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
+        <InteractiveBackground />
         <div className="glass-panel" style={{ maxWidth: '700px', width: '100%', padding: '50px', textAlign: 'center' }}>
 
           <h2 style={{ color: 'var(--accent-cyan)', marginBottom: '8px' }}>Answer Received!</h2>
@@ -461,8 +463,9 @@ const InterviewRoom = () => {
     const fillersByWord = fillerEvents.reduce((acc, e) => { acc[e.word] = (acc[e.word] || 0) + 1; return acc; }, {});
 
     return (
-      <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
-        <h1 className="glow-text" style={{ textAlign: 'center', fontSize: '2.2rem', marginBottom: '24px' }}>Interview Complete</h1>
+      <div style={{ position: 'relative', zIndex: 1, padding: '40px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
+        <InteractiveBackground />
+        <h1 className="glow-text" style={{ position: 'relative', zIndex: 2, textAlign: 'center', fontSize: '2.2rem', marginBottom: '24px' }}>Interview Complete</h1>
 
         {/* ── Terminated-by-strikes alert ── */}
         {terminatedByStrikes && (
@@ -624,44 +627,64 @@ const InterviewRoom = () => {
           </div>
         </div>
 
-        {evalData && (
-          <div className="glass-panel" style={{ padding: '30px', marginBottom: '30px' }}>
-            <h3 style={{ margin: '0 0 20px' }}>Performance Breakdown</h3>
-            <p style={{ lineHeight: '1.7', color: 'var(--text-secondary)', marginBottom: '24px' }}>{evalData.feedback_summary}</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-              <div>
-                <h4 style={{ color: '#00ff88', marginBottom: '12px' }}>Strengths</h4>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  {evalData.strengths?.map((s, i) => <li key={i} style={{ marginBottom: '8px', lineHeight: '1.5' }}>{s}</li>)}
-                </ul>
+        <div className="glass-panel" style={{ padding: '30px', marginBottom: '30px' }}>
+          <h3 style={{ margin: '0 0 20px' }}>Performance Breakdown</h3>
+          {evalData ? (
+            <>
+              <p style={{ lineHeight: '1.7', color: 'var(--text-secondary)', marginBottom: '24px' }}>{evalData.feedback_summary}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div>
+                  <h4 style={{ color: '#00ff88', marginBottom: '12px' }}>Strengths</h4>
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    {evalData.strengths?.map((s, i) => <li key={i} style={{ marginBottom: '8px', lineHeight: '1.5' }}>{s}</li>)}
+                  </ul>
+                </div>
+                <div>
+                  <h4 style={{ color: 'var(--accent-red)', marginBottom: '12px' }}>Areas to Improve</h4>
+                  <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                    {evalData.weaknesses?.map((w, i) => <li key={i} style={{ marginBottom: '8px', lineHeight: '1.5' }}>{w}</li>)}
+                  </ul>
+                </div>
               </div>
-              <div>
-                <h4 style={{ color: 'var(--accent-red)', marginBottom: '12px' }}>Areas to Improve</h4>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  {evalData.weaknesses?.map((w, i) => <li key={i} style={{ marginBottom: '8px', lineHeight: '1.5' }}>{w}</li>)}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
+            </>
+          ) : (
+            <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
+              No performance data available. This usually happens if the interview was ended before any questions were answered.
+            </p>
+          )}
+        </div>
 
         <div className="glass-panel" style={{ padding: '30px', marginBottom: '30px' }}>
           <h3 style={{ margin: '0 0 20px' }}>Full Q&A Transcript</h3>
-          {qnaList.map((qa, i) => (
+          {qnaList.length > 0 ? qnaList.map((qa, i) => (
             <div key={i} style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: i < qnaList.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
               <p style={{ color: 'var(--accent-cyan)', fontWeight: '600', marginBottom: '6px' }}>Q{i + 1}: {qa.question}</p>
               <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6', margin: 0 }}>{qa.answer}</p>
             </div>
-          ))}
+          )) : (
+            <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
+              No questions were answered during this session.
+            </p>
+          )}
         </div>
 
-        <div style={{ textAlign: 'center', display: 'flex', gap: '20px', justifyContent: 'center' }}>
-          {evalData && evalData._id && (
-            <button className="btn-primary pulse-dot" style={{ background: 'linear-gradient(135deg, #00d2ff, #3a7bd5)', padding: '16px 48px', fontSize: '1rem' }} onClick={() => navigate(`/result/${evalData._id}`)}>
-              🔗 Save & View Public Result
-            </button>
-          )}
-          <button className="btn-primary" style={{ padding: '16px 48px', fontSize: '1rem', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }} onClick={() => navigate('/setup')}>
+        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', display: 'flex', gap: '20px', justifyContent: 'center' }}>
+          <button 
+            className={`btn-primary ${evalData && evalData._id ? 'pulse-dot' : ''}`} 
+            style={{ 
+              background: evalData && evalData._id ? 'linear-gradient(135deg, #00d2ff, #3a7bd5)' : 'rgba(255,255,255,0.1)', 
+              padding: '16px 48px', 
+              fontSize: '1rem',
+              opacity: evalData && evalData._id ? 1 : 0.5,
+              cursor: evalData && evalData._id ? 'pointer' : 'not-allowed',
+              border: evalData && evalData._id ? 'none' : '1px solid rgba(255,255,255,0.2)'
+            }} 
+            disabled={!evalData || !evalData._id}
+            onClick={() => evalData && evalData._id && navigate(`/result/${evalData._id}`)}
+          >
+            🔗 Save & View Public Result
+          </button>
+          <button className="btn-primary" style={{ padding: '16px 48px', fontSize: '1rem', background: 'transparent', border: '1px solid var(--glass-border)', color: 'white', cursor: 'pointer' }} onClick={() => navigate('/setup')}>
             Return to Setup
           </button>
         </div>
@@ -676,8 +699,9 @@ const InterviewRoom = () => {
   const isIdle         = recordingState === 'idle';
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+    <div style={{ position: 'relative', zIndex: 1, padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
+      <InteractiveBackground />
+      <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2 style={{ margin: 0 }}>
             {role} <span style={{ color: 'var(--accent-cyan)' }}>Mock Interview</span>
@@ -796,61 +820,75 @@ const InterviewRoom = () => {
             )}
           </div>
 
-          {isIdle && (
-            <button id="start-recording-btn" onClick={startRecording} className="btn-primary" disabled={isFetchingNext} style={{ padding: '18px', fontSize: '1rem', width: '100%' }}>
-              🎙 Start Recording
-            </button>
-          )}
-
-          {isRecording && (
-            <>
-              <button id="stop-recording-btn" onClick={stopAndTranscribe} style={{ padding: '18px', fontSize: '1rem', width: '100%', borderRadius: '12px', background: 'linear-gradient(135deg, #ff4b2b, #ff8870)', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer' }}>
-                ⏹ Stop &amp; Transcribe
-              </button>
-            </>
-          )}
-
-          {isTranscribing && (
-            <div style={{ background: 'rgba(0,210,255,0.06)', border: '1px solid rgba(0,210,255,0.2)', borderRadius: '12px', padding: '28px', textAlign: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--accent-cyan)', marginBottom: '8px' }}>
-                <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
-                <span style={{ fontWeight: '600' }}>Transcribing your answer…</span>
-              </div>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Groq Whisper is processing your audio
-              </p>
-            </div>
-          )}
-
-          {isReviewing && (
-            <>
-              {transcribeError && (
-                <div style={{ background: 'rgba(255,75,43,0.1)', border: '1px solid rgba(255,75,43,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '0.85rem', color: '#ff8870' }}>
-                  ⚠️ {transcribeError}
-                </div>
-              )}
-              <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,210,255,0.25)', borderRadius: '14px', padding: '20px', minHeight: '120px', maxHeight: '220px', overflowY: 'auto', boxShadow: '0 0 0 1px rgba(0,210,255,0.08) inset' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00d2ff' }} />
-                  <span style={{ color: 'var(--accent-cyan)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                    Your Transcript — Review Before Submitting
-                  </span>
-                </div>
-                <p style={{ margin: 0, lineHeight: '1.7', fontSize: '1rem', color: serverTranscript ? 'white' : 'var(--text-secondary)', fontStyle: serverTranscript ? 'normal' : 'italic' }}>
-                  {serverTranscript || 'No speech detected. Please retry.'}
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button id="retry-answer-btn" onClick={retryAnswer} style={{ flex: 1, padding: '16px', fontSize: '1rem', borderRadius: '12px', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
-                  🔄 Retry
-                </button>
-                <button id="submit-answer-btn" onClick={submitAnswer} disabled={!serverTranscript} style={{ flex: 2, padding: '16px', fontSize: '1rem', borderRadius: '12px', background: serverTranscript ? 'linear-gradient(135deg, #00ff88, #00d2ff)' : 'rgba(255,255,255,0.1)', border: 'none', color: serverTranscript ? '#000' : 'var(--text-secondary)', fontWeight: '700', cursor: serverTranscript ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}>
-                  ✅ Submit Answer
-                </button>
-              </div>
-            </>
-          )}
         </div>
+      </div>
+
+      {/* ── Live Transcript Panel ── */}
+      <div className="glass-panel" style={{ padding: '24px', marginBottom: '30px', minHeight: '120px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isRecording ? '#ff4b2b' : '#00d2ff', boxShadow: isRecording ? '0 0 8px #ff4b2b' : '0 0 8px #00d2ff' }} />
+          <span style={{ color: 'var(--text-secondary)', fontWeight: '600', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Live Transcript
+          </span>
+        </div>
+        
+        {isIdle && (
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '1rem' }}>
+            Click Start Recording to answer the question. Your speech will be transcribed here.
+          </p>
+        )}
+
+        {isRecording && (
+          <p style={{ margin: 0, fontSize: '1.1rem', lineHeight: '1.6', color: liveTranscript ? 'white' : 'var(--text-secondary)' }}>
+            {liveTranscript || 'Listening...'}
+          </p>
+        )}
+
+        {isTranscribing && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--accent-cyan)' }}>
+            <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+            <span style={{ fontWeight: '500', fontSize: '1rem' }}>Processing final transcript via Groq Whisper...</span>
+          </div>
+        )}
+
+        {isReviewing && (
+          <>
+            {transcribeError && (
+              <div style={{ marginBottom: '8px', padding: '10px 14px', background: 'rgba(255,75,43,0.1)', border: '1px solid rgba(255,75,43,0.3)', borderRadius: '10px', fontSize: '0.85rem', color: '#ff8870' }}>
+                ⚠️ {transcribeError}
+              </div>
+            )}
+            <p style={{ margin: 0, fontSize: '1.1rem', lineHeight: '1.6', color: serverTranscript ? 'white' : 'var(--text-secondary)' }}>
+              {serverTranscript || 'No speech detected. Please retry.'}
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* ── Bottom Control Dock ── */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '10px 0 20px' }}>
+        {isIdle && (
+          <button id="start-recording-btn" onClick={startRecording} className="btn-primary" disabled={isFetchingNext} style={{ padding: '16px 48px', fontSize: '1.1rem', borderRadius: '100px', minWidth: '280px', boxShadow: '0 8px 24px rgba(0, 210, 255, 0.3)' }}>
+            🎙 Start Recording
+          </button>
+        )}
+
+        {isRecording && (
+          <button id="stop-recording-btn" onClick={stopAndTranscribe} style={{ padding: '16px 48px', fontSize: '1.1rem', borderRadius: '100px', minWidth: '280px', background: 'linear-gradient(135deg, #ff4b2b, #ff8870)', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer', boxShadow: '0 8px 24px rgba(255, 75, 43, 0.4)', transition: 'transform 0.2s' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+            ⏹ Stop &amp; Transcribe
+          </button>
+        )}
+
+        {isReviewing && (
+          <>
+            <button id="retry-answer-btn" onClick={retryAnswer} style={{ padding: '16px 40px', fontSize: '1.05rem', borderRadius: '100px', background: 'transparent', border: '1px solid var(--glass-border)', color: 'white', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+              🔄 Retry
+            </button>
+            <button id="submit-answer-btn" onClick={submitAnswer} disabled={!serverTranscript} style={{ padding: '16px 48px', fontSize: '1.05rem', borderRadius: '100px', background: serverTranscript ? 'linear-gradient(135deg, #00ff88, #00d2ff)' : 'rgba(255,255,255,0.1)', border: 'none', color: serverTranscript ? '#000' : 'var(--text-secondary)', fontWeight: '700', cursor: serverTranscript ? 'pointer' : 'not-allowed', transition: 'all 0.2s', boxShadow: serverTranscript ? '0 8px 24px rgba(0,255,136,0.3)' : 'none' }} onMouseEnter={e => { if(serverTranscript) e.currentTarget.style.transform = 'translateY(-2px)' }} onMouseLeave={e => { if(serverTranscript) e.currentTarget.style.transform = 'translateY(0)' }}>
+              ✅ Submit Answer
+            </button>
+          </>
+        )}
       </div>
 
       {fillerEvents.length > 0 && (

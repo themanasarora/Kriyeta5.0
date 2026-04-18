@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
+import InteractiveBackground from "./InteractiveBackground";
 
 // Client ID is read from .env  →  REACT_APP_GOOGLE_CLIENT_ID
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
@@ -18,6 +19,12 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  useEffect(() => {
+    if (sessionStorage.getItem("user")) {
+      navigate("/setup", { replace: true });
+    }
+  }, [navigate]);
+
   // ── Google One-Tap handler ───────────────────────────────────────
   const handleGoogleResponse = async (response) => {
     try {
@@ -25,7 +32,7 @@ const Login = () => {
         token: response.credential,
       });
       sessionStorage.setItem("user", JSON.stringify(res.data.user));
-      navigate("/setup");
+      navigate("/setup", { replace: true });
     } catch (err) {
       console.error(err);
       alert("Google login failed. Please try again.");
@@ -102,7 +109,7 @@ const Login = () => {
         setFormData({ email: formData.email, password: "", name: "" });
       } else {
         sessionStorage.setItem("user", JSON.stringify(response.data.user));
-        navigate("/setup", { state: { user: response.data.user } });
+        navigate("/setup", { replace: true });
       }
     } catch (error) {
       alert(error.response?.data?.error || "Authentication failed. Please try again.");
@@ -124,36 +131,9 @@ const Login = () => {
           align-items: center;
           justify-content: center;
           font-family: 'Inter', sans-serif;
-          background: #0a0a0f;
+          background: transparent;
           position: relative;
           overflow: hidden;
-        }
-
-        /* Animated gradient blobs */
-        .login-page::before,
-        .login-page::after {
-          content: '';
-          position: absolute;
-          border-radius: 50%;
-          filter: blur(80px);
-          animation: float 8s ease-in-out infinite;
-          pointer-events: none;
-        }
-        .login-page::before {
-          width: 500px; height: 500px;
-          background: radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%);
-          top: -100px; left: -100px;
-        }
-        .login-page::after {
-          width: 400px; height: 400px;
-          background: radial-gradient(circle, rgba(168,85,247,0.2) 0%, transparent 70%);
-          bottom: -80px; right: -80px;
-          animation-delay: -4s;
-        }
-
-        @keyframes float {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          50%       { transform: translate(30px, 20px) scale(1.05); }
         }
 
         /* Card */
@@ -161,13 +141,13 @@ const Login = () => {
           position: relative;
           z-index: 10;
           width: 100%;
-          max-width: 420px;
+          max-width: 600px;
           background: rgba(255,255,255,0.04);
           backdrop-filter: blur(24px);
           -webkit-backdrop-filter: blur(24px);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 24px;
-          padding: 48px 40px;
+          padding: 64px 56px;
           box-shadow:
             0 0 0 1px rgba(99,102,241,0.1),
             0 32px 64px rgba(0,0,0,0.5),
@@ -193,17 +173,17 @@ const Login = () => {
 
         .login-title {
           text-align: center;
-          font-size: 26px;
+          font-size: 30px;
           font-weight: 700;
           color: #fff;
           letter-spacing: -0.5px;
-          margin-bottom: 6px;
+          margin-bottom: 8px;
         }
         .login-subtitle {
           text-align: center;
-          font-size: 14px;
+          font-size: 15px;
           color: rgba(255,255,255,0.45);
-          margin-bottom: 32px;
+          margin-bottom: 40px;
         }
 
         /* Google button wrapper */
@@ -335,6 +315,7 @@ const Login = () => {
       `}</style>
 
       <div className="login-page">
+        <InteractiveBackground />
         <div className="login-card">
 
           {/* Logo */}

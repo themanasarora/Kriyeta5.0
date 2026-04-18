@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
+import InteractiveBackground from './InteractiveBackground';
 
 const InterviewResult = () => {
   const { id } = useParams();
@@ -25,7 +26,8 @@ const InterviewResult = () => {
   if (!data) return <div style={{ color: 'var(--accent-red)', textAlign: 'center', marginTop: '100px' }}>Result Not Found</div>;
 
   return (
-    <div style={{ minHeight: '100vh', padding: '60px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', padding: '60px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <InteractiveBackground />
       <div style={{ width: '100%', maxWidth: '900px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
         <div>
           <h1 className="glow-text" style={{ fontSize: '2.5rem', marginBottom: '8px', margin: 0 }}>Interview Result</h1>
