@@ -37,6 +37,15 @@ const InterviewRoom = () => {
   const [evalData, setEvalData]         = useState(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState('');
+  const [finalConfidence, setFinalConfidence] = useState(null);
+
+  // ── Anti-cheat strike system ──────────────────────────────────────────────
+  const [strikes, setStrikes]                   = useState(0);
+  const [showStrikeWarning, setShowStrikeWarning] = useState(false);
+  const [strikeReason, setStrikeReason]           = useState('');
+  const [terminatedByStrikes, setTerminatedByStrikes] = useState(false);
+  const strikesRef = useRef(0);   // mirror for use inside event callbacks
+  const phaseRef   = useRef('interview'); // mirror so event handler always has fresh phase
 
   const { eyeContactPercent, getStats } = useEyeContact(videoRef);
 
@@ -142,6 +151,67 @@ const InterviewRoom = () => {
       }
     }
   });
+
+  // Keep refs in sync with state so event listeners always see fresh values
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { strikesRef.current = strikes; }, [strikes]);
+
+  // ── Tab-switch detection (with cooldown to avoid false positives) ──────────
+  useEffect(() => {
+    const COOLDOWN_MS = 5000; // minimum gap between consecutive strikes
+    let lastStrikeAt = 0;
+
+    const issueStrike = (reason) => {
+      // Only penalise during the active interview phase
+      if (phaseRef.current === 'finished' || phaseRef.current === 'feedback') return;
+
+      const now = Date.now();
+      if (now - lastStrikeAt < COOLDOWN_MS) return; // ignore rapid-fire events
+      lastStrikeAt = now;
+
+      const next = strikesRef.current + 1;
+      strikesRef.current = next;
+      setStrikes(next);
+      setStrikeReason(reason);
+      setShowStrikeWarning(true);
+
+      if (next >= 3) {
+        setTerminatedByStrikes(true);
+        setTimeout(() => {
+          setShowStrikeWarning(false);
+          finishInterview();
+        }, 2800);
+      } else {
+        setTimeout(() => setShowStrikeWarning(false), 3000);
+      }
+    };
+
+    // visibilitychange fires when the tab is hidden (most reliable signal)
+    const onVisibilityChange = () => {
+      if (document.hidden) issueStrike('Tab switch detected');
+    };
+
+    // blur fires on Alt+Tab / app switch — but NOT on in-page interactions
+    // We skip very-short blurs (< 200 ms) to ignore accidental focus losses
+    let blurTimer = null;
+    const onBlur = () => {
+      blurTimer = setTimeout(() => issueStrike('Window focus lost — possible tab switch'), 200);
+    };
+    const onFocus = () => {
+      clearTimeout(blurTimer);
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      clearTimeout(blurTimer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchQuestion = async (step, prevQ, prevA) => {
     setIsFetchingNext(true);
@@ -265,6 +335,7 @@ const InterviewRoom = () => {
     try { recognitionRef.current?.stop(); } catch (e) {}
 
     setPhase('finished');
+    phaseRef.current = 'finished'; // prevent further strikes
     setIsEvaluating(true);
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -276,12 +347,38 @@ const InterviewRoom = () => {
       finalizeVideo();
     }
 
+    // ── Guaranteed camera & mic teardown ──────────────────────────────────
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+
     try {
       const userStr = sessionStorage.getItem('user');
       const user = userStr ? JSON.parse(userStr) : null;
-      
+
+      // ── Confidence scoring on the full transcript ──────────────────────────
+      let confidenceScore = null;
+      let confidenceLabel = null;
+      try {
+        const fullTranscript = finalQna.map(q => q.answer).join(' ');
+        const totalFillers   = fillerEvents.length;
+        const confRes = await axios.post('http://127.0.0.1:5000/api/score-confidence', {
+          transcript:   fullTranscript,
+          filler_count: totalFillers,
+        });
+        confidenceScore = confRes.data.confidence_score;
+        confidenceLabel = confRes.data.label;
+        setFinalConfidence(confRes.data);
+      } catch (confErr) {
+        console.warn('Confidence scoring failed:', confErr);
+      }
+      // ── Evaluate interview ─────────────────────────────────────────────────
       const res = await axios.post('http://127.0.0.1:5000/api/evaluate-interview', {
-        role, difficulty, ats_score: score, qna_list: finalQna, email: user?.email
+        role, difficulty, ats_score: score, qna_list: finalQna, email: user?.email,
+        confidence_score: confidenceScore,
+        confidence_label: confidenceLabel,
       });
       
       if (user && res.data.streak_count) {
@@ -364,8 +461,29 @@ const InterviewRoom = () => {
     const fillersByWord = fillerEvents.reduce((acc, e) => { acc[e.word] = (acc[e.word] || 0) + 1; return acc; }, {});
 
     return (
-      <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto' }}>
-        <h1 className="glow-text" style={{ textAlign: 'center', fontSize: '2.2rem', marginBottom: '40px' }}>Interview Complete</h1>
+      <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
+        <h1 className="glow-text" style={{ textAlign: 'center', fontSize: '2.2rem', marginBottom: '24px' }}>Interview Complete</h1>
+
+        {/* ── Terminated-by-strikes alert ── */}
+        {terminatedByStrikes && (
+          <div style={{
+            background: 'rgba(255,75,43,0.12)',
+            border: '1px solid rgba(255,75,43,0.45)',
+            borderRadius: '14px', padding: '16px 24px',
+            display: 'flex', alignItems: 'center', gap: '16px',
+            marginBottom: '24px',
+          }}>
+            <span style={{ fontSize: '1.8rem' }}>🚫</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: '700', color: '#ff4b2b', fontSize: '1rem' }}>
+                Interview auto-terminated — 3 strikes reached
+              </p>
+              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>
+                Repeated tab-switching or window focus violations were detected. The session has been scored based on completed answers.
+              </p>
+            </div>
+          </div>
+        )}
 
         {isEvaluating && (
           <div className="glass-panel" style={{ padding: '30px', textAlign: 'center', marginBottom: '30px' }}>
@@ -427,7 +545,7 @@ const InterviewRoom = () => {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
           <div className="glass-panel" style={{ padding: '24px', textAlign: 'center' }}>
 
             <h4 style={{ margin: '0 0 4px', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Eye Contact</h4>
@@ -457,6 +575,52 @@ const InterviewRoom = () => {
               {isEvaluating ? '...' : `${evalData?.final_score ?? '--'}%`}
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '4px 0 0' }}>AI Evaluation</p>
+          </div>
+
+          {/* ── Confidence Score Card ── */}
+          <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+            {/* Ambient glow based on label */}
+            <div style={{
+              position: 'absolute', inset: 0, opacity: 0.06, pointerEvents: 'none',
+              background: finalConfidence
+                ? (finalConfidence.confidence_score >= 70 ? 'radial-gradient(circle, #00ff88, transparent)'
+                  : finalConfidence.confidence_score >= 40 ? 'radial-gradient(circle, #ffd700, transparent)'
+                  : 'radial-gradient(circle, #ff4b2b, transparent)')
+                : 'none',
+            }} />
+            <h4 style={{ margin: '0 0 4px', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Confidence Score
+            </h4>
+            <div style={{
+              fontSize: '2.5rem', fontWeight: '800',
+              color: finalConfidence
+                ? (finalConfidence.confidence_score >= 70 ? '#00ff88'
+                  : finalConfidence.confidence_score >= 40 ? '#ffd700'
+                  : '#ff4b2b')
+                : 'var(--text-secondary)',
+            }}>
+              {isEvaluating && !finalConfidence ? '...' : (finalConfidence?.confidence_score ?? '--')}
+            </div>
+            {finalConfidence ? (
+              <>
+                <p style={{
+                  fontSize: '0.85rem', margin: '4px 0 6px', fontWeight: '600',
+                  color: finalConfidence.confidence_score >= 70 ? '#00ff88'
+                    : finalConfidence.confidence_score >= 40 ? '#ffd700' : '#ff4b2b',
+                }}>
+                  {finalConfidence.label} Confidence
+                </p>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                  Hedging: <strong>{finalConfidence.breakdown?.hedging}</strong>
+                  &nbsp;·&nbsp;
+                  Fluency: <strong>{finalConfidence.breakdown?.fluency}</strong>
+                  &nbsp;·&nbsp;
+                  Vocab: <strong>{finalConfidence.breakdown?.vocabulary}</strong>
+                </div>
+              </>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '4px 0 0' }}>ML Classifier</p>
+            )}
           </div>
         </div>
 
@@ -512,7 +676,7 @@ const InterviewRoom = () => {
   const isIdle         = recordingState === 'idle';
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2 style={{ margin: 0 }}>
@@ -534,6 +698,37 @@ const InterviewRoom = () => {
           {isRecording && (
             <div className="pulse-dot" style={{ background: 'var(--accent-red)', width: '12px', height: '12px', borderRadius: '50%' }} />
           )}
+
+          {/* ── Strike indicator ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            background: strikes === 0 ? 'rgba(255,255,255,0.05)'
+              : strikes === 1 ? 'rgba(255,170,0,0.12)'
+              : 'rgba(255,75,43,0.18)',
+            border: `1px solid ${
+              strikes === 0 ? 'rgba(255,255,255,0.1)'
+              : strikes === 1 ? 'rgba(255,170,0,0.45)'
+              : 'rgba(255,75,43,0.6)'}`,
+            borderRadius: '10px', padding: '8px 14px',
+            transition: 'all 0.4s ease',
+          }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Strikes</span>
+            {[0,1,2].map(i => (
+              <div key={i} style={{
+                width: '10px', height: '10px', borderRadius: '50%',
+                background: i < strikes
+                  ? (strikes >= 3 ? '#ff4b2b' : strikes === 2 ? '#ff8c00' : '#ffd700')
+                  : 'rgba(255,255,255,0.12)',
+                border: `1px solid ${
+                  i < strikes
+                    ? (strikes >= 3 ? 'rgba(255,75,43,0.8)' : 'rgba(255,170,0,0.6)')
+                    : 'rgba(255,255,255,0.1)'}`,
+                transition: 'all 0.3s ease',
+                boxShadow: i < strikes && strikes >= 2 ? '0 0 6px rgba(255,75,43,0.6)' : 'none',
+              }} />
+            ))}
+          </div>
+
           <button
             onClick={() => finishInterview()}
             style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', borderRadius: '10px', padding: '10px 18px', cursor: 'pointer', fontSize: '0.9rem' }}
@@ -673,7 +868,86 @@ const InterviewRoom = () => {
           </div>
         </div>
       )}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes strikeSlideIn {
+          0%   { opacity: 0; transform: scale(0.85); }
+          15%  { opacity: 1; transform: scale(1.04); }
+          25%  { transform: scale(1); }
+          80%  { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(0.95); }
+        }
+        @keyframes shakeX {
+          0%,100% { transform: translateX(0); }
+          20%     { transform: translateX(-14px); }
+          40%     { transform: translateX(14px); }
+          60%     { transform: translateX(-10px); }
+          80%     { transform: translateX(10px); }
+        }
+      `}</style>
+
+      {/* ── Strike Warning Overlay ── */}
+      {showStrikeWarning && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: strikes >= 3
+            ? 'rgba(255,0,0,0.18)'
+            : 'rgba(0,0,0,0.72)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'strikeSlideIn 3s ease forwards',
+        }}>
+          <div style={{
+            textAlign: 'center', maxWidth: '480px', padding: '20px',
+            animation: 'shakeX 0.5s ease 0.1s',
+          }}>
+            {/* Strike count pips */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+              {[0,1,2].map(i => (
+                <div key={i} style={{
+                  width: '22px', height: '22px', borderRadius: '50%',
+                  background: i < strikes ? '#ff4b2b' : 'rgba(255,255,255,0.12)',
+                  boxShadow: i < strikes ? '0 0 16px rgba(255,75,43,0.8)' : 'none',
+                  border: `2px solid ${i < strikes ? '#ff4b2b' : 'rgba(255,255,255,0.2)'}`,
+                  transition: 'all 0.3s ease',
+                }} />
+              ))}
+            </div>
+
+            <div style={{
+              fontSize: strikes >= 3 ? '5rem' : '4rem',
+              lineHeight: 1, marginBottom: '12px',
+              filter: 'drop-shadow(0 0 20px rgba(255,75,43,0.7))',
+            }}>
+              {strikes >= 3 ? '🚫' : '⚠️'}
+            </div>
+
+            <h2 style={{
+              fontSize: strikes >= 3 ? '2rem' : '1.7rem',
+              fontFamily: 'Outfit, sans-serif',
+              color: strikes >= 3 ? '#ff4b2b' : '#ffd700',
+              margin: '0 0 10px',
+              textShadow: `0 0 20px ${strikes >= 3 ? 'rgba(255,75,43,0.6)' : 'rgba(255,215,0,0.5)'}`,
+            }}>
+              {strikes >= 3 ? 'INTERVIEW TERMINATED' : `STRIKE ${strikes} of 3`}
+            </h2>
+
+            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '1rem', margin: '0 0 8px', lineHeight: '1.5' }}>
+              {strikeReason}
+            </p>
+
+            {strikes < 3 ? (
+              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', margin: 0 }}>
+                {3 - strikes} more violation{3 - strikes !== 1 ? 's' : ''} will end the interview automatically.
+              </p>
+            ) : (
+              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', margin: 0 }}>
+                3 strikes reached. Generating your final report...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

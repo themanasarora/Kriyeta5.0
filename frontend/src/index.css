@@ -275,7 +275,10 @@ h1, h2, h3, h4, h5, h6 {
 .main-content {
   flex: 1;
   display: flex;
-  align-items: center;
+  /* flex-start prevents tall pages (e.g. InterviewRoom) from being clipped
+     at the top. Individual pages that need centering use align-self: center
+     on their own root element. */
+  align-items: flex-start;
   justify-content: center;
   overflow-y: auto;
   position: relative;
@@ -313,6 +316,8 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   align-items: center;
   width: 100%;
+  min-height: 100%;
+  align-self: center;
 }
 
 .file-input::file-selector-button {
@@ -526,6 +531,7 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   align-items: center;
   width: 100%;
-  min-height: 100vh;
+  min-height: 100%;
+  align-self: center;
 }
 

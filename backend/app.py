@@ -14,6 +14,7 @@ from routes.transcribe import transcribe_bp
 from routes.auth import auth_bp
 from routes.github import github_bp
 from routes.leetcode import leetcode_bp
+from routes.confidence import confidence_bp
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
@@ -29,6 +30,7 @@ app.register_blueprint(transcribe_bp, url_prefix='/api')
 app.register_blueprint(auth_bp, url_prefix='/api')
 app.register_blueprint(github_bp, url_prefix='/api')
 app.register_blueprint(leetcode_bp, url_prefix='/api')
+app.register_blueprint(confidence_bp, url_prefix='/api')
 
 @app.route('/health')
 def health():

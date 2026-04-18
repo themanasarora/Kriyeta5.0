@@ -16,6 +16,8 @@ def evaluate_interview():
     ats_score = data.get('ats_score', 0)
     qna_list = data.get('qna_list', [])
     email = data.get('email', '')
+    confidence_score = data.get('confidence_score', None)
+    confidence_label = data.get('confidence_label', None)
 
     if not qna_list:
         return jsonify({"error": "No Q&A data provided"}), 400
@@ -59,7 +61,9 @@ def evaluate_interview():
             "feedback_summary": result.get("feedback_summary", "Evaluation complete."),
             "strengths": result.get("strengths", []),
             "weaknesses": result.get("weaknesses", []),
-            "qna_list": qna_list
+            "qna_list": qna_list,
+            "confidence_score": confidence_score,
+            "confidence_label": confidence_label,
         }
 
         # Track Streaks & Save

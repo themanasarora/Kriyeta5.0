@@ -57,6 +57,56 @@ const InterviewResult = () => {
         </div>
       </div>
 
+      {/* ── Confidence Score Banner ── */}
+      {data.confidence_score != null && (
+        <div className="glass-panel" style={{
+          width: '100%', maxWidth: '900px', padding: '24px 30px', marginBottom: '30px',
+          display: 'flex', alignItems: 'center', gap: '32px',
+          borderLeft: `4px solid ${
+            data.confidence_score >= 70 ? '#00ff88'
+              : data.confidence_score >= 40 ? '#ffd700' : '#ff4b2b'
+          }`,
+          background: `linear-gradient(90deg, ${
+            data.confidence_score >= 70 ? 'rgba(0,255,136,0.06)'
+              : data.confidence_score >= 40 ? 'rgba(255,215,0,0.06)' : 'rgba(255,75,43,0.06)'
+          }, transparent)`,
+        }}>
+          <div style={{ textAlign: 'center', minWidth: '80px' }}>
+            <div style={{
+              fontSize: '3rem', fontWeight: '800',
+              color: data.confidence_score >= 70 ? '#00ff88'
+                : data.confidence_score >= 40 ? '#ffd700' : '#ff4b2b',
+            }}>
+              {data.confidence_score}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '4px' }}>
+              / 100
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Confidence Score</h3>
+              <span style={{
+                background: data.confidence_score >= 70 ? 'rgba(0,255,136,0.15)'
+                  : data.confidence_score >= 40 ? 'rgba(255,215,0,0.15)' : 'rgba(255,75,43,0.15)',
+                color: data.confidence_score >= 70 ? '#00ff88'
+                  : data.confidence_score >= 40 ? '#ffd700' : '#ff4b2b',
+                border: `1px solid ${
+                  data.confidence_score >= 70 ? 'rgba(0,255,136,0.4)'
+                    : data.confidence_score >= 40 ? 'rgba(255,215,0,0.4)' : 'rgba(255,75,43,0.4)'
+                }`,
+                borderRadius: '20px', padding: '3px 12px', fontSize: '0.8rem', fontWeight: '700',
+              }}>
+                {data.confidence_label || (data.confidence_score >= 70 ? 'High' : data.confidence_score >= 40 ? 'Moderate' : 'Low')}
+              </span>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0, lineHeight: '1.5' }}>
+              Measured by ML classifier using hedging language, filler word rate, vocabulary richness, and answer structure.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%', maxWidth: '900px', marginBottom: '30px' }}>
         <div className="glass-panel" style={{ padding: '30px' }}>
           <h3 style={{ color: '#00ff88', margin: '0 0 20px 0' }}>✅ Strengths</h3>
