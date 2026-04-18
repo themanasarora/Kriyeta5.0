@@ -1,13 +1,16 @@
 # Python
-venv/Lib/
-venv/Scripts/
-venv/Include/
-venv/pyvenv.cfg
+**/venv/
+venv/
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
 .env
+**/.env
+# Models
+**/onnx_model/
+onnx_model/
 .pytest_cache/
 htmlcov/
 .tox/

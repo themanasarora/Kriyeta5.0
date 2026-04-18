@@ -10,6 +10,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "venv", ".env"))
 from routes.ats import ats_bp
 from routes.question import question_bp
 from routes.evaluate import evaluate_bp
+from routes.transcribe import transcribe_bp
 
 app = Flask(__name__)
 # Explicit CORS for local development
@@ -19,6 +20,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.register_blueprint(ats_bp, url_prefix='/api')
 app.register_blueprint(question_bp, url_prefix='/api')
 app.register_blueprint(evaluate_bp, url_prefix='/api')
+app.register_blueprint(transcribe_bp, url_prefix='/api')
 
 @app.route('/health')
 def health():
