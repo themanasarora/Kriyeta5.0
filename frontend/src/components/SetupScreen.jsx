@@ -82,7 +82,7 @@ const SetupScreen = () => {
           background: transparent;
           position: relative;
           overflow: hidden;
-          padding: 20px 20px 20px 200px;
+          padding: 20px;
         }
 
         /* Wrapper */
@@ -352,15 +352,33 @@ const SetupScreen = () => {
         
         <div className="setup-content-wrapper">
           {user && (
-            <div className="user-header">
-              <span className="user-welcome">
-                Welcome, <strong>{user.name || user.email}</strong>
-              </span>
+            <>
+              <div style={{ textAlign: 'center', marginBottom: '40px', width: '100%' }}>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '4px' }}>
+                  Welcome Back
+                </div>
+                <div style={{ color: 'white', fontSize: '2.5rem', fontWeight: '800', letterSpacing: '-1px' }}>
+                  Hello, {user.name || user.email.split('@')[0]}
+                </div>
+              </div>
 
-              <button className="logout-btn" onClick={handleLogout}>
-                Logout
+              <button 
+                className="profile-avatar-btn" 
+                onClick={() => navigate('/profile')}
+                title="View Profile"
+                style={{ 
+                  position: 'fixed',
+                  top: '24px',
+                  right: '24px',
+                  width: '64px', 
+                  height: '64px', 
+                  fontSize: '1.6rem',
+                  zIndex: 100
+                }}
+              >
+                {(user.name || user.email || 'U').charAt(0).toUpperCase()}
               </button>
-            </div>
+            </>
           )}
 
           <div className="setup-card">
