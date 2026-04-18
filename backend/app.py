@@ -1,20 +1,40 @@
 import os
+<<<<<<< HEAD
 import json
 import requests
 import fitz  # PyMuPDF
 from flask import Flask, request, jsonify, redirect, session
+=======
+from flask import Flask, request, jsonify
+>>>>>>> 109308d26f0a2a82a88204e258644f4caab9e7b0
 from flask_cors import CORS
-from groq import Groq
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), "venv", ".env"))
 
+# Import Blueprints
+from routes.ats import ats_bp
+from routes.question import question_bp
+from routes.evaluate import evaluate_bp
+from routes.transcribe import transcribe_bp
+
 app = Flask(__name__)
+<<<<<<< HEAD
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 CORS(app, supports_credentials=True)
+=======
+# Explicit CORS for local development
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+>>>>>>> 109308d26f0a2a82a88204e258644f4caab9e7b0
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY")) # fallback to key from aiinterview
+# Register Blueprints
+app.register_blueprint(ats_bp, url_prefix='/api')
+app.register_blueprint(question_bp, url_prefix='/api')
+app.register_blueprint(evaluate_bp, url_prefix='/api')
+app.register_blueprint(transcribe_bp, url_prefix='/api')
 
+<<<<<<< HEAD
 # In-memory storage (replace with database in production)
 USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 
@@ -277,6 +297,23 @@ def analyze_resume():
     except Exception as e:
         print("Groq error:", e)
         return jsonify({"error": "Failed to analyze resume"}), 500
+=======
+@app.route('/health')
+def health():
+    return jsonify({"status": "up", "api_key_status": "present" if os.getenv("GROQ_API_KEY") else "missing"})
+>>>>>>> 109308d26f0a2a82a88204e258644f4caab9e7b0
 
 if __name__ == "__main__":
+    print("\n--- 🚀 KRIYETA BACKEND STARTING ---")
+    if not os.getenv("GROQ_API_KEY"):
+        print("❌ ERROR: GROQ_API_KEY is missing!")
+    else:
+        print("✅ API Key Detected.")
+    
+    print("\n--- REGISTERED ROUTES ---")
+    for rule in app.url_map.iter_rules():
+        print(f"URL: {rule.rule}  -->  Endpoint: {rule.endpoint}")
+    print("--------------------------\n")
+
     app.run(debug=True, port=5000)
+
