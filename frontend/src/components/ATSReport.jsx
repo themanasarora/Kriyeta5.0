@@ -35,7 +35,7 @@ const ATSReport = () => {
             </div>
           </div>
           <p style={{ margin: 0, fontWeight: '600', color: scoreColor, fontSize: '1rem' }}>
-            {scoreNum >= 75 ? '🎯 Strong Match' : scoreNum >= 50 ? '⚡ Partial Match' : '⚠️ Weak Match'}
+            {scoreNum >= 75 ? 'Strong Match' : scoreNum >= 50 ? 'Partial Match' : 'Weak Match'}
           </p>
         </div>
 
@@ -43,13 +43,13 @@ const ATSReport = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Summary */}
           <div className="glass-panel" style={{ padding: '25px' }}>
-            <h3 style={{ color: 'var(--accent-cyan)', margin: '0 0 12px' }}>📋 Candidate Profile</h3>
+            <h3 style={{ color: 'var(--accent-cyan)', margin: '0 0 12px' }}>Candidate Profile</h3>
             <p style={{ color: 'var(--text-secondary)', lineHeight: '1.7', margin: 0 }}>{summary || 'No summary available.'}</p>
           </div>
 
           {/* Feedback */}
           <div className="glass-panel" style={{ padding: '25px' }}>
-            <h3 style={{ color: '#ffd700', margin: '0 0 12px' }}>📈 Areas to Strengthen</h3>
+            <h3 style={{ color: '#ffd700', margin: '0 0 12px' }}>Areas to Strengthen</h3>
             {feedbackLines.length > 0 ? (
               <ul style={{ margin: 0, paddingLeft: '20px' }}>
                 {feedbackLines.map((line, i) => (
@@ -73,7 +73,7 @@ const ATSReport = () => {
           style={{ padding: '16px 48px', fontSize: '1.1rem' }}
           onClick={() => navigate('/interview', { state: { summary, feedback, score, role, difficulty, totalQuestions } })}
         >
-          ▶ Start Interview Session
+          Start Interview Session
         </button>
       </div>
     </div>

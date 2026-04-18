@@ -1,55 +1,52 @@
 import os
-import fitz  # PyMuPDF
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify
 from flask_cors import CORS
-from groq import Groq
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), "venv", ".env"))
 
+# Import Blueprints
+from routes.ats import ats_bp
+from routes.question import question_bp
+from routes.evaluate import evaluate_bp
+from routes.transcribe import transcribe_bp
+from routes.auth import auth_bp
+from routes.github import github_bp
+from routes.leetcode import leetcode_bp
+from routes.confidence import confidence_bp
+
 app = Flask(__name__)
-CORS(app)
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY")) # fallback to key from aiinterview
+# Explicit CORS for local development
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-@app.route("/api/analyze-resume", methods=["POST"])
-def analyze_resume():
-    if 'resume' not in request.files:
-        return jsonify({"error": "No resume file provided"}), 400
-    
-    file = request.files['resume']
-    jd = request.form.get('job_description', '')
-    
-    # Extract text from PDF
-    try:
-        pdf_document = fitz.open(stream=file.read(), filetype="pdf")
-        resume_text = ""
-        for page_num in range(len(pdf_document)):
-            page = pdf_document[page_num]
-            resume_text += page.get_text()
-    except Exception as e:
-        return jsonify({"error": f"Failed to parse PDF: {str(e)}"}), 400
+# Register Blueprints
+app.register_blueprint(ats_bp, url_prefix='/api')
+app.register_blueprint(question_bp, url_prefix='/api')
+app.register_blueprint(evaluate_bp, url_prefix='/api')
+app.register_blueprint(transcribe_bp, url_prefix='/api')
+app.register_blueprint(auth_bp, url_prefix='/api')
+app.register_blueprint(github_bp, url_prefix='/api')
+app.register_blueprint(leetcode_bp, url_prefix='/api')
+app.register_blueprint(confidence_bp, url_prefix='/api')
 
-    # Call Groq to summarize
-    try:
-        messages = [
-            {"role": "system", "content": "You are an expert HR analyst. Read the resume and the job description, then provide a short summary of how well the candidate fits the role and their key strengths. Return valid JSON only."},
-            {"role": "user", "content": f"Resume Text: {resume_text}\n\nJob Description: {jd}\n\nReturn JSON in this format: {{\"candidate_summary\": \"...\"}}"}
-        ]
-        
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.3,
-            max_tokens=500
-        )
-        import json
-        result = json.loads(response.choices[0].message.content or "{}")
-        return jsonify(result)
-    except Exception as e:
-        print("Groq error:", e)
-        return jsonify({"error": "Failed to analyze resume"}), 500
+@app.route('/health')
+def health():
+    return jsonify({"status": "up", "api_key_status": "present" if os.getenv("GROQ_API_KEY") else "missing"})
 
 if __name__ == "__main__":
+    print("\n--- 🚀 KRIYETA BACKEND STARTING ---")
+    if not os.getenv("GROQ_API_KEY"):
+        print("❌ ERROR: GROQ_API_KEY is missing!")
+    else:
+        print("✅ API Key Detected.")
+    
+    print("\n--- REGISTERED ROUTES ---")
+    for rule in app.url_map.iter_rules():
+        if not str(rule.rule).startswith('/static'):
+            print(f"URL: {rule.rule}  -->  Endpoint: {rule.endpoint}")
+    print("--------------------------\n")
+
     app.run(debug=True, port=5000)

@@ -3,46 +3,52 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useEyeContact } from '../hooks/useEyeContact';
 
-// ─── Filler word pattern ──────────────────────────────────────────────────────
 const FILLER_REGEX = /\b(um+|uh+|uhh+|hmm+|err+|like|you know|basically|literally|sort of|kind of|right\?|okay so)\b/gi;
 
 const InterviewRoom = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { summary, feedback, score, role, difficulty, totalQuestions } = location.state || {};
+  const location  = useLocation();
+  const navigate  = useNavigate();
+  const { summary, score, role, difficulty, totalQuestions } = location.state || {};
 
-  // ─── Refs ──────────────────────────────────────────────────────────────────
-  const videoRef         = useRef(null);
-  const playbackRef      = useRef(null); // for final review playback
-  const mediaRecorderRef = useRef(null);
-  const recognitionRef   = useRef(null);
-  const chunksRef        = useRef([]);    // use ref instead of state to avoid stale closure
+  const videoRef          = useRef(null);
+  const playbackRef       = useRef(null);
+  const mediaRecorderRef  = useRef(null);
+  const audioRecorderRef  = useRef(null);
+  const recognitionRef    = useRef(null);
+  const videoChunksRef    = useRef([]);
+  const audioChunksRef    = useRef([]);
   const recordingStartRef = useRef(null);
-  const fullTranscriptRef = useRef('');  // accumulates ALL spoken text
+  const localStreamRef    = useRef(null);
 
-  // ─── Interview state ───────────────────────────────────────────────────────
-  const [question, setQuestion]         = useState('');
-  const [currentStep, setCurrentStep]   = useState(0); // 0 = greeting phase
-  const [isListening, setIsListening]   = useState(false);
-  const [liveTranscript, setLiveTranscript] = useState('');
+  const [question, setQuestion]       = useState('');
+  const [currentStep, setCurrentStep] = useState(0);
 
-  // ─── Phase states ──────────────────────────────────────────────────────────
-  const [phase, setPhase] = useState('interview'); // 'interview' | 'feedback' | 'finished'
+  const [recordingState, setRecordingState]     = useState('idle');
+  const [liveTranscript, setLiveTranscript]     = useState('');
+  const [serverTranscript, setServerTranscript] = useState('');
+  const [transcribeError, setTranscribeError]   = useState('');
+
+  const [phase, setPhase]               = useState('interview');
   const [answerFeedback, setAnswerFeedback] = useState('');
   const [isFetchingNext, setIsFetchingNext] = useState(false);
 
-  // ─── Analytics ────────────────────────────────────────────────────────────
-  const [fillerEvents, setFillerEvents] = useState([]); // [{word, timestamp, questionIdx}]
+  const [fillerEvents, setFillerEvents] = useState([]);
   const [qnaList, setQnaList]           = useState([]);
   const [evalData, setEvalData]         = useState(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [recordingBlob, setRecordingBlob] = useState(null);
-  const [recordingUrl, setRecordingUrl]   = useState('');
+  const [recordingUrl, setRecordingUrl] = useState('');
+  const [finalConfidence, setFinalConfidence] = useState(null);
 
-  // ─── Eye contact hook ─────────────────────────────────────────────────────
+  // ── Anti-cheat strike system ──────────────────────────────────────────────
+  const [strikes, setStrikes]                   = useState(0);
+  const [showStrikeWarning, setShowStrikeWarning] = useState(false);
+  const [strikeReason, setStrikeReason]           = useState('');
+  const [terminatedByStrikes, setTerminatedByStrikes] = useState(false);
+  const strikesRef = useRef(0);   // mirror for use inside event callbacks
+  const phaseRef   = useRef('interview'); // mirror so event handler always has fresh phase
+
   const { eyeContactPercent, getStats } = useEyeContact(videoRef);
 
-  // ─── TTS ──────────────────────────────────────────────────────────────────
   const speak = useCallback((text) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
@@ -54,53 +60,38 @@ const InterviewRoom = () => {
     window.speechSynthesis.speak(u);
   }, []);
 
-  // ─── Filler detection helper ──────────────────────────────────────────────
   const detectFillers = useCallback((newWords, questionIdx) => {
     const elapsed = recordingStartRef.current ? (Date.now() - recordingStartRef.current) / 1000 : 0;
     const matches = [...newWords.matchAll(FILLER_REGEX)];
     if (matches.length > 0) {
-      const events = matches.map(m => ({ word: m[0].toLowerCase(), timestamp: Math.round(elapsed * 10) / 10, questionIdx }));
+      const events = matches.map(m => ({
+        word: m[0].toLowerCase(),
+        timestamp: Math.round(elapsed * 10) / 10,
+        questionIdx,
+      }));
       setFillerEvents(prev => [...prev, ...events]);
     }
   }, []);
 
-  // ─── Init: Camera + Mic + MediaRecorder + SpeechRecognition ──────────────
   useEffect(() => {
-    let localStream = null;
-
-    // Setup SpeechRecognition with proper accumulation
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR && !recognitionRef.current) {
       const recog = new SR();
-      recog.continuous = true;
+      recog.continuous     = true;
       recog.interimResults = true;
-      recog.lang = 'en-US';
+      recog.lang           = 'en-US';
       recog.maxAlternatives = 1;
 
       recog.onresult = (event) => {
-        // Walk ALL results to build the full transcript for this session
         let finalChunk = '';
         let interimChunk = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const t = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalChunk += t + ' ';
-            fullTranscriptRef.current += t + ' ';
-          } else {
-            interimChunk += t;
-          }
+          if (event.results[i].isFinal) finalChunk += t + ' ';
+          else interimChunk += t;
         }
-        // Show interim + already-spoken final text for this answer
-        setLiveTranscript(finalChunk + interimChunk);
-
-        // Filler detection on final chunks
-        if (finalChunk) {
-          detectFillers(finalChunk, currentStep);
-        }
-      };
-
-      recog.onerror = (e) => {
-        if (e.error !== 'no-speech') console.warn('STT error:', e.error);
+        setLiveTranscript(prev => (finalChunk ? prev + finalChunk : prev + interimChunk));
+        if (finalChunk) detectFillers(finalChunk, currentStep);
       };
 
       recognitionRef.current = recog;
@@ -108,24 +99,29 @@ const InterviewRoom = () => {
 
     const initSession = async () => {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        if (videoRef.current) videoRef.current.srcObject = localStream;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStreamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
 
-        // Use timeslice to get data every 1s for reliable blob
-        const recorder = new MediaRecorder(localStream, { mimeType: 'video/webm;codecs=vp9,opus' });
-        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-        recorder.start(1000); // chunk every 1 second
-        mediaRecorderRef.current = recorder;
+        // Try standard fallback codecs if vp9 fails
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+          ? 'video/webm;codecs=vp9,opus' 
+          : 'video/webm';
+        
+        const videoRecorder = new MediaRecorder(stream, { mimeType });
+        videoRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) videoChunksRef.current.push(e.data);
+        };
+        videoRecorder.start(1000);
+        mediaRecorderRef.current = videoRecorder;
         recordingStartRef.current = Date.now();
 
-        // Speak greeting
         setTimeout(() => {
-          speak("Hello! Welcome to your mock interview for the " + role + " role. When you're ready, click Start Answering to respond to each question.");
+          speak(`Hello! Welcome to your mock interview for the ${role} role. When you're ready, click Start Recording to answer each question.`);
         }, 500);
-
       } catch (err) {
         console.error('Hardware init error:', err);
-        alert('Camera/microphone access denied. Please allow permissions and refresh.');
+        alert('Camera/microphone access denied.');
       }
     };
 
@@ -133,28 +129,102 @@ const InterviewRoom = () => {
 
     return () => {
       window.speechSynthesis.cancel();
-      try { if (recognitionRef.current) recognitionRef.current.stop(); } catch (e) {}
+      try { recognitionRef.current?.stop(); } catch (e) {}
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
-      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load first question on mount
   useEffect(() => {
     fetchQuestion(1, '', '');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Fetch question (with optional prev Q+A for feedback) ─────────────────
+  // CRITICAL FIX: Rebind the webcam to the video element if it unmounted during a different phase
+  useEffect(() => {
+    if (phase === 'interview' && videoRef.current && localStreamRef.current) {
+      if (videoRef.current.srcObject !== localStreamRef.current) {
+        videoRef.current.srcObject = localStreamRef.current;
+      }
+    }
+  });
+
+  // Keep refs in sync with state so event listeners always see fresh values
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { strikesRef.current = strikes; }, [strikes]);
+
+  // ── Tab-switch detection (with cooldown to avoid false positives) ──────────
+  useEffect(() => {
+    const COOLDOWN_MS = 5000; // minimum gap between consecutive strikes
+    let lastStrikeAt = 0;
+
+    const issueStrike = (reason) => {
+      // Only penalise during the active interview phase
+      if (phaseRef.current === 'finished' || phaseRef.current === 'feedback') return;
+
+      const now = Date.now();
+      if (now - lastStrikeAt < COOLDOWN_MS) return; // ignore rapid-fire events
+      lastStrikeAt = now;
+
+      const next = strikesRef.current + 1;
+      strikesRef.current = next;
+      setStrikes(next);
+      setStrikeReason(reason);
+      setShowStrikeWarning(true);
+
+      if (next >= 3) {
+        setTerminatedByStrikes(true);
+        setTimeout(() => {
+          setShowStrikeWarning(false);
+          finishInterview();
+        }, 2800);
+      } else {
+        setTimeout(() => setShowStrikeWarning(false), 3000);
+      }
+    };
+
+    // visibilitychange fires when the tab is hidden (most reliable signal)
+    const onVisibilityChange = () => {
+      if (document.hidden) issueStrike('Tab switch detected');
+    };
+
+    // blur fires on Alt+Tab / app switch — but NOT on in-page interactions
+    // We skip very-short blurs (< 200 ms) to ignore accidental focus losses
+    let blurTimer = null;
+    const onBlur = () => {
+      blurTimer = setTimeout(() => issueStrike('Window focus lost — possible tab switch'), 200);
+    };
+    const onFocus = () => {
+      clearTimeout(blurTimer);
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      clearTimeout(blurTimer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fetchQuestion = async (step, prevQ, prevA) => {
     setIsFetchingNext(true);
     try {
+      const userStr = sessionStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+
       const res = await axios.post('http://127.0.0.1:5000/api/generate-question', {
         summary, role, difficulty,
         currentStep: step,
         prev_question: prevQ,
         prev_answer: prevA,
+        email: user?.email
       });
       const nextQ = res.data.next_question;
       const fb    = res.data.answer_feedback || '';
@@ -170,85 +240,180 @@ const InterviewRoom = () => {
     }
   };
 
-  // ─── Toggle mic ───────────────────────────────────────────────────────────
-  const toggleListening = () => {
-    if (!recognitionRef.current) { alert('Speech recognition not supported. Use Chrome.'); return; }
+  const startRecording = () => {
+    if (!localStreamRef.current) return;
+    
+    // Stop the AI's speaking voice so it isn't picked up by the mic
+    window.speechSynthesis.cancel();
 
-    if (isListening) {
-      try { recognitionRef.current.stop(); } catch (e) {}
-      setIsListening(false);
-    } else {
-      setLiveTranscript('');
-      fullTranscriptRef.current = fullTranscriptRef.current; // keep full history
-      try { recognitionRef.current.start(); } catch (e) { console.log('Mic start error:', e); }
-      setIsListening(true);
-    }
+    setLiveTranscript('');
+    setServerTranscript('');
+    setTranscribeError('');
+    audioChunksRef.current = [];
+
+    const audioStream = new MediaStream(localStreamRef.current.getAudioTracks());
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    const audioRec = new MediaRecorder(audioStream, { mimeType });
+    audioRec.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+    audioRec.start(500);
+    audioRecorderRef.current = audioRec;
+
+    try { recognitionRef.current?.start(); } catch (e) {}
+    setRecordingState('recording');
   };
 
-  // ─── Submit answer → go to feedback phase ────────────────────────────────
-  const submitAnswer = () => {
-    try { recognitionRef.current.stop(); } catch (e) {}
-    setIsListening(false);
+  const stopAndTranscribe = async () => {
+    try { recognitionRef.current?.stop(); } catch (e) {}
+    setRecordingState('transcribing');
 
-    const answerText = liveTranscript.trim() || 'No answer provided.';
+    await new Promise((resolve) => {
+      const rec = audioRecorderRef.current;
+      if (!rec || rec.state === 'inactive') { resolve(); return; }
+      rec.onstop = resolve;
+      rec.stop();
+    });
+
+    const mimeType = audioRecorderRef.current?.mimeType || 'audio/webm';
+    const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'answer.webm');
+      const res = await axios.post('http://127.0.0.1:5000/api/transcribe', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000,
+      });
+      const text = res.data.transcript || '';
+      setServerTranscript(text || liveTranscript.trim() || 'No speech detected.');
+    } catch (err) {
+      console.error('Transcription error:', err);
+      const fallback = liveTranscript.trim();
+      if (fallback) {
+        setServerTranscript(fallback);
+        setTranscribeError('Server transcription failed — showing browser transcript as fallback.');
+      } else {
+        setTranscribeError('Transcription failed. Please retry.');
+        setServerTranscript('');
+      }
+    }
+    setRecordingState('reviewing');
+  };
+
+  const retryAnswer = () => {
+    setServerTranscript('');
+    setLiveTranscript('');
+    setTranscribeError('');
+    audioChunksRef.current = [];
+    setRecordingState('idle');
+  };
+
+  const submitAnswer = () => {
+    const answerText = serverTranscript.trim() || liveTranscript.trim() || 'No answer provided.';
     const qa = { question, answer: answerText };
     setQnaList(prev => [...prev, qa]);
+    setRecordingState('idle');
+    setServerTranscript('');
+    setLiveTranscript('');
 
     if (currentStep < Number(totalQuestions)) {
-      // Show feedback, then allow user to proceed
       setPhase('feedback');
       fetchQuestion(currentStep + 1, question, answerText);
     } else {
-      // Last question — finish
       finishInterview([...qnaList, qa]);
     }
   };
 
-  // ─── Proceed after feedback ───────────────────────────────────────────────
   const proceedToNext = () => {
     setAnswerFeedback('');
-    setLiveTranscript('');
     setPhase('interview');
   };
 
-  // ─── Finish interview ─────────────────────────────────────────────────────
   const finishInterview = async (finalQna = qnaList) => {
     window.speechSynthesis.cancel();
-    try { recognitionRef.current.stop(); } catch (e) {}
-
-    // Stop recorder and collect blob
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-
-    // Give recorder time to flush final chunk
-    await new Promise(resolve => setTimeout(resolve, 1200));
-
-    const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-    const url  = URL.createObjectURL(blob);
-    setRecordingBlob(blob);
-    setRecordingUrl(url);
-
-    // Download recording
-    const a = document.createElement('a');
-    a.href = url; a.download = `Interview_${role}_${Date.now()}.webm`; a.click();
+    try { recognitionRef.current?.stop(); } catch (e) {}
 
     setPhase('finished');
+    phaseRef.current = 'finished'; // prevent further strikes
     setIsEvaluating(true);
 
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.onstop = () => {
+        finalizeVideo();
+      };
+      mediaRecorderRef.current.stop();
+    } else {
+      finalizeVideo();
+    }
+
+    // ── Guaranteed camera & mic teardown ──────────────────────────────────
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+
     try {
+      const userStr = sessionStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+
+      // ── Confidence scoring on the full transcript ──────────────────────────
+      let confidenceScore = null;
+      let confidenceLabel = null;
+      try {
+        const fullTranscript = finalQna.map(q => q.answer).join(' ');
+        const totalFillers   = fillerEvents.length;
+        const confRes = await axios.post('http://127.0.0.1:5000/api/score-confidence', {
+          transcript:   fullTranscript,
+          filler_count: totalFillers,
+        });
+        confidenceScore = confRes.data.confidence_score;
+        confidenceLabel = confRes.data.label;
+        setFinalConfidence(confRes.data);
+      } catch (confErr) {
+        console.warn('Confidence scoring failed:', confErr);
+      }
+      // ── Evaluate interview ─────────────────────────────────────────────────
       const res = await axios.post('http://127.0.0.1:5000/api/evaluate-interview', {
-        role, difficulty, ats_score: score, qna_list: finalQna,
+        role, difficulty, ats_score: score, qna_list: finalQna, email: user?.email,
+        confidence_score: confidenceScore,
+        confidence_label: confidenceLabel,
       });
+      
+      if (user && res.data.streak_count) {
+          user.streak_count = res.data.streak_count;
+          sessionStorage.setItem('user', JSON.stringify(user));
+      }
+      
       setEvalData(res.data);
+      
     } catch (err) {
       console.error('Eval error:', err);
-    } finally {
       setIsEvaluating(false);
     }
   };
 
-  // ─── Seek video to timestamp ──────────────────────────────────────────────
+  const finalizeVideo = () => {
+    if (videoChunksRef.current.length === 0) return;
+    const blob = new Blob(videoChunksRef.current, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    setRecordingUrl(url);
+  };
+
+  // Hack for Chrome's WebM duration bug so timeline seeking works
+  const handleVideoLoadedMetadata = () => {
+    const v = playbackRef.current;
+    if (!v) return;
+    if (v.duration === Infinity || isNaN(v.duration)) {
+      v.currentTime = 1e99;
+      v.onseeked = () => {
+        v.onseeked = null;
+        v.currentTime = 0;
+      };
+    }
+  };
+
   const seekTo = (timestamp) => {
     if (playbackRef.current) {
       playbackRef.current.currentTime = timestamp;
@@ -256,12 +421,12 @@ const InterviewRoom = () => {
     }
   };
 
-  // ─── RENDER: Feedback Phase ───────────────────────────────────────────────
+  // ─── RENDER: Feedback Phase ──────────────────────────────────────────────────
   if (phase === 'feedback') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>
         <div className="glass-panel" style={{ maxWidth: '700px', width: '100%', padding: '50px', textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>💬</div>
+
           <h2 style={{ color: 'var(--accent-cyan)', marginBottom: '8px' }}>Answer Received!</h2>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '30px' }}>Question {currentStep - 1} of {totalQuestions}</p>
 
@@ -272,23 +437,15 @@ const InterviewRoom = () => {
             </div>
           ) : (
             <div style={{ padding: '30px', color: 'var(--text-secondary)', marginBottom: '36px' }}>
-              {isFetchingNext ? '⏳ Preparing next question...' : 'Moving to next question...'}
+              {isFetchingNext ? 'Preparing next question...' : 'Moving to next question...'}
             </div>
           )}
 
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button
-              className="btn-primary"
-              onClick={proceedToNext}
-              disabled={isFetchingNext}
-              style={{ padding: '16px 40px', fontSize: '1rem' }}
-            >
+            <button className="btn-primary" onClick={proceedToNext} disabled={isFetchingNext} style={{ padding: '16px 40px', fontSize: '1rem' }}>
               {isFetchingNext ? '⏳ Loading next question...' : `▶ Next Question (${currentStep} of ${totalQuestions})`}
             </button>
-            <button
-              onClick={() => finishInterview()}
-              style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', borderRadius: '12px', padding: '16px 24px', cursor: 'pointer' }}
-            >
+            <button onClick={() => finishInterview()} style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', borderRadius: '12px', padding: '16px 24px', cursor: 'pointer' }}>
               End Early
             </button>
           </div>
@@ -297,39 +454,63 @@ const InterviewRoom = () => {
     );
   }
 
-  // ─── RENDER: Finished / Results Phase ─────────────────────────────────────
+  // ─── RENDER: Finished / Results Phase ───────────────────────────────────────
   if (phase === 'finished') {
     const eyeStats = getStats();
     const totalFillers = fillerEvents.length;
     const fillersByWord = fillerEvents.reduce((acc, e) => { acc[e.word] = (acc[e.word] || 0) + 1; return acc; }, {});
 
     return (
-      <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto' }}>
-        <h1 className="glow-text" style={{ textAlign: 'center', fontSize: '2.2rem', marginBottom: '40px' }}>Interview Complete</h1>
+      <div style={{ padding: '40px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
+        <h1 className="glow-text" style={{ textAlign: 'center', fontSize: '2.2rem', marginBottom: '24px' }}>Interview Complete</h1>
+
+        {/* ── Terminated-by-strikes alert ── */}
+        {terminatedByStrikes && (
+          <div style={{
+            background: 'rgba(255,75,43,0.12)',
+            border: '1px solid rgba(255,75,43,0.45)',
+            borderRadius: '14px', padding: '16px 24px',
+            display: 'flex', alignItems: 'center', gap: '16px',
+            marginBottom: '24px',
+          }}>
+            <span style={{ fontSize: '1.8rem' }}>🚫</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: '700', color: '#ff4b2b', fontSize: '1rem' }}>
+                Interview auto-terminated — 3 strikes reached
+              </p>
+              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>
+                Repeated tab-switching or window focus violations were detected. The session has been scored based on completed answers.
+              </p>
+            </div>
+          </div>
+        )}
 
         {isEvaluating && (
           <div className="glass-panel" style={{ padding: '30px', textAlign: 'center', marginBottom: '30px' }}>
-            <p style={{ color: 'var(--accent-cyan)', fontSize: '1.1rem' }}>⏳ AI is scoring your performance...</p>
+            <p style={{ color: 'var(--accent-cyan)', fontSize: '1.1rem' }}>AI is scoring your performance...</p>
           </div>
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginBottom: '30px' }}>
-          {/* Video Playback */}
           <div className="glass-panel" style={{ padding: '16px' }}>
-            <h3 style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>📹 Interview Recording</h3>
+            <h3 style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Interview Recording</h3>
             {recordingUrl ? (
-              <video ref={playbackRef} src={recordingUrl} controls style={{ width: '100%', borderRadius: '12px', background: '#000' }} />
+              <video 
+                ref={playbackRef} 
+                src={recordingUrl} 
+                onLoadedMetadata={handleVideoLoadedMetadata}
+                controls 
+                style={{ width: '100%', borderRadius: '12px', background: '#000' }} 
+              />
             ) : (
-              <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>No recording available</div>
+              <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>Processing recording...</div>
             )}
           </div>
 
-          {/* Timestamped Analytics */}
           <div className="glass-panel" style={{ padding: '24px', overflowY: 'auto', maxHeight: '420px' }}>
             <h3 style={{ margin: '0 0 16px', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>⏱ Analytics Timeline</h3>
-
             {fillerEvents.length === 0 ? (
-              <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>✅ No filler words detected!</p>
+              <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No filler words detected.</p>
             ) : (
               <>
                 <p style={{ color: 'var(--accent-red)', fontSize: '0.9rem', marginBottom: '12px' }}>
@@ -349,8 +530,8 @@ const InterviewRoom = () => {
                       borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', color: 'white',
                       display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', transition: 'all 0.2s'
                     }}
-                      onMouseEnter={e => e.target.style.background = 'rgba(255,75,43,0.2)'}
-                      onMouseLeave={e => e.target.style.background = 'rgba(255,75,43,0.08)'}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,75,43,0.2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,75,43,0.08)'}
                     >
                       <span style={{ color: 'var(--accent-red)', fontWeight: '700', fontSize: '0.8rem', minWidth: '45px' }}>
                         {String(Math.floor(ev.timestamp / 60)).padStart(2, '0')}:{String(Math.floor(ev.timestamp % 60)).padStart(2, '0')}
@@ -364,11 +545,9 @@ const InterviewRoom = () => {
           </div>
         </div>
 
-        {/* Score Cards Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
-          {/* Eye Contact */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '30px' }}>
           <div className="glass-panel" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>👁️</div>
+
             <h4 style={{ margin: '0 0 4px', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Eye Contact</h4>
             <div style={{ fontSize: '2.5rem', fontWeight: '800', color: eyeStats.eyeContactPercent >= 60 ? '#00ff88' : '#ffd700' }}>
               {eyeStats.eyeContactPercent}%
@@ -378,9 +557,8 @@ const InterviewRoom = () => {
             </p>
           </div>
 
-          {/* Filler Words */}
           <div className="glass-panel" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎙️</div>
+
             <h4 style={{ margin: '0 0 4px', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Filler Words</h4>
             <div style={{ fontSize: '2.5rem', fontWeight: '800', color: totalFillers <= 3 ? '#00ff88' : totalFillers <= 8 ? '#ffd700' : '#ff4b2b' }}>
               {totalFillers}
@@ -390,31 +568,75 @@ const InterviewRoom = () => {
             </p>
           </div>
 
-          {/* Interview Score */}
           <div className="glass-panel" style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🏆</div>
+
             <h4 style={{ margin: '0 0 4px', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase' }}>Interview Score</h4>
             <div style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--accent-cyan)' }}>
               {isEvaluating ? '...' : `${evalData?.final_score ?? '--'}%`}
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '4px 0 0' }}>AI Evaluation</p>
           </div>
+
+          {/* ── Confidence Score Card ── */}
+          <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+            {/* Ambient glow based on label */}
+            <div style={{
+              position: 'absolute', inset: 0, opacity: 0.06, pointerEvents: 'none',
+              background: finalConfidence
+                ? (finalConfidence.confidence_score >= 70 ? 'radial-gradient(circle, #00ff88, transparent)'
+                  : finalConfidence.confidence_score >= 40 ? 'radial-gradient(circle, #ffd700, transparent)'
+                  : 'radial-gradient(circle, #ff4b2b, transparent)')
+                : 'none',
+            }} />
+            <h4 style={{ margin: '0 0 4px', color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Confidence Score
+            </h4>
+            <div style={{
+              fontSize: '2.5rem', fontWeight: '800',
+              color: finalConfidence
+                ? (finalConfidence.confidence_score >= 70 ? '#00ff88'
+                  : finalConfidence.confidence_score >= 40 ? '#ffd700'
+                  : '#ff4b2b')
+                : 'var(--text-secondary)',
+            }}>
+              {isEvaluating && !finalConfidence ? '...' : (finalConfidence?.confidence_score ?? '--')}
+            </div>
+            {finalConfidence ? (
+              <>
+                <p style={{
+                  fontSize: '0.85rem', margin: '4px 0 6px', fontWeight: '600',
+                  color: finalConfidence.confidence_score >= 70 ? '#00ff88'
+                    : finalConfidence.confidence_score >= 40 ? '#ffd700' : '#ff4b2b',
+                }}>
+                  {finalConfidence.label} Confidence
+                </p>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                  Hedging: <strong>{finalConfidence.breakdown?.hedging}</strong>
+                  &nbsp;·&nbsp;
+                  Fluency: <strong>{finalConfidence.breakdown?.fluency}</strong>
+                  &nbsp;·&nbsp;
+                  Vocab: <strong>{finalConfidence.breakdown?.vocabulary}</strong>
+                </div>
+              </>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '4px 0 0' }}>ML Classifier</p>
+            )}
+          </div>
         </div>
 
-        {/* Strengths + Weaknesses */}
         {evalData && (
           <div className="glass-panel" style={{ padding: '30px', marginBottom: '30px' }}>
-            <h3 style={{ margin: '0 0 20px' }}>📝 Performance Breakdown</h3>
+            <h3 style={{ margin: '0 0 20px' }}>Performance Breakdown</h3>
             <p style={{ lineHeight: '1.7', color: 'var(--text-secondary)', marginBottom: '24px' }}>{evalData.feedback_summary}</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
               <div>
-                <h4 style={{ color: '#00ff88', marginBottom: '12px' }}>✅ Strengths</h4>
+                <h4 style={{ color: '#00ff88', marginBottom: '12px' }}>Strengths</h4>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   {evalData.strengths?.map((s, i) => <li key={i} style={{ marginBottom: '8px', lineHeight: '1.5' }}>{s}</li>)}
                 </ul>
               </div>
               <div>
-                <h4 style={{ color: 'var(--accent-red)', marginBottom: '12px' }}>📈 Improve</h4>
+                <h4 style={{ color: 'var(--accent-red)', marginBottom: '12px' }}>Areas to Improve</h4>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   {evalData.weaknesses?.map((w, i) => <li key={i} style={{ marginBottom: '8px', lineHeight: '1.5' }}>{w}</li>)}
                 </ul>
@@ -423,9 +645,8 @@ const InterviewRoom = () => {
           </div>
         )}
 
-        {/* Q&A Transcript */}
         <div className="glass-panel" style={{ padding: '30px', marginBottom: '30px' }}>
-          <h3 style={{ margin: '0 0 20px' }}>📋 Full Q&A Transcript</h3>
+          <h3 style={{ margin: '0 0 20px' }}>Full Q&A Transcript</h3>
           {qnaList.map((qa, i) => (
             <div key={i} style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: i < qnaList.length - 1 ? '1px solid var(--glass-border)' : 'none' }}>
               <p style={{ color: 'var(--accent-cyan)', fontWeight: '600', marginBottom: '6px' }}>Q{i + 1}: {qa.question}</p>
@@ -434,19 +655,28 @@ const InterviewRoom = () => {
           ))}
         </div>
 
-        <div style={{ textAlign: 'center' }}>
-          <button className="btn-primary" style={{ padding: '16px 48px', fontSize: '1rem' }} onClick={() => navigate('/')}>
-            Start New Session
+        <div style={{ textAlign: 'center', display: 'flex', gap: '20px', justifyContent: 'center' }}>
+          {evalData && evalData._id && (
+            <button className="btn-primary pulse-dot" style={{ background: 'linear-gradient(135deg, #00d2ff, #3a7bd5)', padding: '16px 48px', fontSize: '1rem' }} onClick={() => navigate(`/result/${evalData._id}`)}>
+              🔗 Save & View Public Result
+            </button>
+          )}
+          <button className="btn-primary" style={{ padding: '16px 48px', fontSize: '1rem', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }} onClick={() => navigate('/setup')}>
+            Return to Setup
           </button>
         </div>
       </div>
     );
   }
 
-  // ─── RENDER: Interview Phase ───────────────────────────────────────────────
+  // ─── RENDER: Interview Phase ──────────────────────────────────────────────────
+  const isRecording    = recordingState === 'recording';
+  const isTranscribing = recordingState === 'transcribing';
+  const isReviewing    = recordingState === 'reviewing';
+  const isIdle         = recordingState === 'idle';
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
-      {/* Header */}
+    <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%', alignSelf: 'flex-start', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2 style={{ margin: 0 }}>
@@ -460,14 +690,45 @@ const InterviewRoom = () => {
             </span>
             &nbsp;·&nbsp;
             <span style={{ color: eyeContactPercent >= 60 ? '#00ff88' : '#ffd700' }}>
-              👁 {eyeContactPercent}% eye contact
+              {eyeContactPercent}% eye contact
             </span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {isListening && (
+          {isRecording && (
             <div className="pulse-dot" style={{ background: 'var(--accent-red)', width: '12px', height: '12px', borderRadius: '50%' }} />
           )}
+
+          {/* ── Strike indicator ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            background: strikes === 0 ? 'rgba(255,255,255,0.05)'
+              : strikes === 1 ? 'rgba(255,170,0,0.12)'
+              : 'rgba(255,75,43,0.18)',
+            border: `1px solid ${
+              strikes === 0 ? 'rgba(255,255,255,0.1)'
+              : strikes === 1 ? 'rgba(255,170,0,0.45)'
+              : 'rgba(255,75,43,0.6)'}`,
+            borderRadius: '10px', padding: '8px 14px',
+            transition: 'all 0.4s ease',
+          }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Strikes</span>
+            {[0,1,2].map(i => (
+              <div key={i} style={{
+                width: '10px', height: '10px', borderRadius: '50%',
+                background: i < strikes
+                  ? (strikes >= 3 ? '#ff4b2b' : strikes === 2 ? '#ff8c00' : '#ffd700')
+                  : 'rgba(255,255,255,0.12)',
+                border: `1px solid ${
+                  i < strikes
+                    ? (strikes >= 3 ? 'rgba(255,75,43,0.8)' : 'rgba(255,170,0,0.6)')
+                    : 'rgba(255,255,255,0.1)'}`,
+                transition: 'all 0.3s ease',
+                boxShadow: i < strikes && strikes >= 2 ? '0 0 6px rgba(255,75,43,0.6)' : 'none',
+              }} />
+            ))}
+          </div>
+
           <button
             onClick={() => finishInterview()}
             style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', borderRadius: '10px', padding: '10px 18px', cursor: 'pointer', fontSize: '0.9rem' }}
@@ -477,9 +738,7 @@ const InterviewRoom = () => {
         </div>
       </div>
 
-      {/* Main Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
-        {/* Left: Camera */}
         <div style={{ position: 'relative' }}>
           <div className="glass-panel" style={{ padding: '10px', overflow: 'hidden' }}>
             <video
@@ -488,16 +747,27 @@ const InterviewRoom = () => {
               style={{ width: '100%', borderRadius: '12px', transform: 'scaleX(-1)', background: '#000', minHeight: '380px', display: 'block' }}
             />
           </div>
-          {isListening && (
+          {isRecording && (
             <div className="pulse-dot" style={{
               position: 'absolute', bottom: '26px', left: '26px',
               background: 'rgba(255,75,43,0.92)', padding: '8px 18px',
               borderRadius: '20px', fontWeight: '600', fontSize: '0.9rem'
             }}>
-              🎤 Recording...
+              Recording...
             </div>
           )}
-          {/* Live filler counter */}
+          {isTranscribing && (
+            <div style={{
+              position: 'absolute', bottom: '26px', left: '26px',
+              background: 'rgba(0,210,255,0.15)', backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(0,210,255,0.3)',
+              padding: '8px 18px', borderRadius: '20px', fontWeight: '600', fontSize: '0.9rem',
+              display: 'flex', alignItems: 'center', gap: '8px'
+            }}>
+              <div style={{ width: '14px', height: '14px', borderRadius: '50%', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+              Transcribing...
+            </div>
+          )}
           <div style={{
             position: 'absolute', top: '26px', right: '26px',
             background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
@@ -508,7 +778,6 @@ const InterviewRoom = () => {
           </div>
         </div>
 
-        {/* Right: AI + Transcript */}
         <div className="glass-panel" style={{ padding: '36px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.8rem', fontWeight: '700', letterSpacing: '1.5px' }}>
             AI Interviewer
@@ -527,50 +796,63 @@ const InterviewRoom = () => {
             )}
           </div>
 
-          {/* Live Transcript Box */}
-          <div style={{
-            background: 'rgba(0,0,0,0.35)', border: '1px solid var(--glass-border)',
-            borderRadius: '12px', padding: '16px', minHeight: '130px', maxHeight: '200px', overflowY: 'auto'
-          }}>
-            <div style={{ color: 'var(--accent-cyan)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>
-              Live Transcript
-            </div>
-            <p style={{ margin: 0, lineHeight: '1.6', fontSize: '1rem' }}>
-              {liveTranscript || (
-                <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                  {isListening ? 'Listening... speak clearly' : 'Click "Start Answering" and speak your answer'}
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Controls */}
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={toggleListening}
-              className={isListening ? 'btn-danger' : 'btn-primary'}
-              style={{ flex: 1, padding: '18px', fontSize: '1rem' }}
-              disabled={isFetchingNext}
-            >
-              {isListening ? '⏹ Stop Recording' : '🎙 Start Answering'}
+          {isIdle && (
+            <button id="start-recording-btn" onClick={startRecording} className="btn-primary" disabled={isFetchingNext} style={{ padding: '18px', fontSize: '1rem', width: '100%' }}>
+              🎙 Start Recording
             </button>
-            {isListening && (
-              <button
-                onClick={submitAnswer}
-                style={{
-                  flex: 1, padding: '18px', fontSize: '1rem', borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #00ff88, #00d2ff)', border: 'none',
-                  color: '#000', fontWeight: '700', cursor: 'pointer'
-                }}
-              >
-                ✅ Submit Answer
+          )}
+
+          {isRecording && (
+            <>
+              <button id="stop-recording-btn" onClick={stopAndTranscribe} style={{ padding: '18px', fontSize: '1rem', width: '100%', borderRadius: '12px', background: 'linear-gradient(135deg, #ff4b2b, #ff8870)', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer' }}>
+                ⏹ Stop &amp; Transcribe
               </button>
-            )}
-          </div>
+            </>
+          )}
+
+          {isTranscribing && (
+            <div style={{ background: 'rgba(0,210,255,0.06)', border: '1px solid rgba(0,210,255,0.2)', borderRadius: '12px', padding: '28px', textAlign: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--accent-cyan)', marginBottom: '8px' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2px solid var(--accent-cyan)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                <span style={{ fontWeight: '600' }}>Transcribing your answer…</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                Groq Whisper is processing your audio
+              </p>
+            </div>
+          )}
+
+          {isReviewing && (
+            <>
+              {transcribeError && (
+                <div style={{ background: 'rgba(255,75,43,0.1)', border: '1px solid rgba(255,75,43,0.3)', borderRadius: '10px', padding: '10px 14px', fontSize: '0.85rem', color: '#ff8870' }}>
+                  ⚠️ {transcribeError}
+                </div>
+              )}
+              <div style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,210,255,0.25)', borderRadius: '14px', padding: '20px', minHeight: '120px', maxHeight: '220px', overflowY: 'auto', boxShadow: '0 0 0 1px rgba(0,210,255,0.08) inset' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00d2ff' }} />
+                  <span style={{ color: 'var(--accent-cyan)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    Your Transcript — Review Before Submitting
+                  </span>
+                </div>
+                <p style={{ margin: 0, lineHeight: '1.7', fontSize: '1rem', color: serverTranscript ? 'white' : 'var(--text-secondary)', fontStyle: serverTranscript ? 'normal' : 'italic' }}>
+                  {serverTranscript || 'No speech detected. Please retry.'}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button id="retry-answer-btn" onClick={retryAnswer} style={{ flex: 1, padding: '16px', fontSize: '1rem', borderRadius: '12px', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white'; }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
+                  🔄 Retry
+                </button>
+                <button id="submit-answer-btn" onClick={submitAnswer} disabled={!serverTranscript} style={{ flex: 2, padding: '16px', fontSize: '1rem', borderRadius: '12px', background: serverTranscript ? 'linear-gradient(135deg, #00ff88, #00d2ff)' : 'rgba(255,255,255,0.1)', border: 'none', color: serverTranscript ? '#000' : 'var(--text-secondary)', fontWeight: '700', cursor: serverTranscript ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}>
+                  ✅ Submit Answer
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Filler progress bar */}
       {fillerEvents.length > 0 && (
         <div className="glass-panel" style={{ padding: '16px 24px', marginTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
@@ -586,8 +868,86 @@ const InterviewRoom = () => {
           </div>
         </div>
       )}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes strikeSlideIn {
+          0%   { opacity: 0; transform: scale(0.85); }
+          15%  { opacity: 1; transform: scale(1.04); }
+          25%  { transform: scale(1); }
+          80%  { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(0.95); }
+        }
+        @keyframes shakeX {
+          0%,100% { transform: translateX(0); }
+          20%     { transform: translateX(-14px); }
+          40%     { transform: translateX(14px); }
+          60%     { transform: translateX(-10px); }
+          80%     { transform: translateX(10px); }
+        }
+      `}</style>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* ── Strike Warning Overlay ── */}
+      {showStrikeWarning && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: strikes >= 3
+            ? 'rgba(255,0,0,0.18)'
+            : 'rgba(0,0,0,0.72)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'strikeSlideIn 3s ease forwards',
+        }}>
+          <div style={{
+            textAlign: 'center', maxWidth: '480px', padding: '20px',
+            animation: 'shakeX 0.5s ease 0.1s',
+          }}>
+            {/* Strike count pips */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+              {[0,1,2].map(i => (
+                <div key={i} style={{
+                  width: '22px', height: '22px', borderRadius: '50%',
+                  background: i < strikes ? '#ff4b2b' : 'rgba(255,255,255,0.12)',
+                  boxShadow: i < strikes ? '0 0 16px rgba(255,75,43,0.8)' : 'none',
+                  border: `2px solid ${i < strikes ? '#ff4b2b' : 'rgba(255,255,255,0.2)'}`,
+                  transition: 'all 0.3s ease',
+                }} />
+              ))}
+            </div>
+
+            <div style={{
+              fontSize: strikes >= 3 ? '5rem' : '4rem',
+              lineHeight: 1, marginBottom: '12px',
+              filter: 'drop-shadow(0 0 20px rgba(255,75,43,0.7))',
+            }}>
+              {strikes >= 3 ? '🚫' : '⚠️'}
+            </div>
+
+            <h2 style={{
+              fontSize: strikes >= 3 ? '2rem' : '1.7rem',
+              fontFamily: 'Outfit, sans-serif',
+              color: strikes >= 3 ? '#ff4b2b' : '#ffd700',
+              margin: '0 0 10px',
+              textShadow: `0 0 20px ${strikes >= 3 ? 'rgba(255,75,43,0.6)' : 'rgba(255,215,0,0.5)'}`,
+            }}>
+              {strikes >= 3 ? 'INTERVIEW TERMINATED' : `STRIKE ${strikes} of 3`}
+            </h2>
+
+            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '1rem', margin: '0 0 8px', lineHeight: '1.5' }}>
+              {strikeReason}
+            </p>
+
+            {strikes < 3 ? (
+              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', margin: 0 }}>
+                {3 - strikes} more violation{3 - strikes !== 1 ? 's' : ''} will end the interview automatically.
+              </p>
+            ) : (
+              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', margin: 0 }}>
+                3 strikes reached. Generating your final report...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
