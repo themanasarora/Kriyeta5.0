@@ -8,6 +8,8 @@ import ATSReport from './components/ATSReport';
 import InterviewRoom from './components/InterviewRoom';
 import Chatbot from './components/Chatbot';
 import ProfileAnalyzer from './components/ProfileAnalyzer';
+import UserHistory from './components/UserHistory';
+import InterviewResult from './components/InterviewResult';
 
 const AppLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -38,6 +40,7 @@ const AppLayout = () => {
             )}
           </button>
         )}
+
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/setup" element={<SetupScreen />} />
@@ -45,6 +48,8 @@ const AppLayout = () => {
           <Route path="/ats" element={<ATSReport />} />
           <Route path="/interview" element={<InterviewRoom />} />
           <Route path="/profile" element={<ProfileAnalyzer />} />
+          <Route path="/history" element={<UserHistory />} />
+          <Route path="/result/:id" element={<InterviewResult />} />
         </Routes>
 
         {/* Floating Web Assistant */}

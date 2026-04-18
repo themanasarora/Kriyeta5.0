@@ -134,14 +134,27 @@ const InterviewRoom = () => {
     fetchQuestion(1, '', '');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // CRITICAL FIX: Rebind the webcam to the video element if it unmounted during a different phase
+  useEffect(() => {
+    if (phase === 'interview' && videoRef.current && localStreamRef.current) {
+      if (videoRef.current.srcObject !== localStreamRef.current) {
+        videoRef.current.srcObject = localStreamRef.current;
+      }
+    }
+  });
+
   const fetchQuestion = async (step, prevQ, prevA) => {
     setIsFetchingNext(true);
     try {
+      const userStr = sessionStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+
       const res = await axios.post('http://127.0.0.1:5000/api/generate-question', {
         summary, role, difficulty,
         currentStep: step,
         prev_question: prevQ,
         prev_answer: prevA,
+        email: user?.email
       });
       const nextQ = res.data.next_question;
       const fb    = res.data.answer_feedback || '';
@@ -264,13 +277,22 @@ const InterviewRoom = () => {
     }
 
     try {
+      const userStr = sessionStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      
       const res = await axios.post('http://127.0.0.1:5000/api/evaluate-interview', {
-        role, difficulty, ats_score: score, qna_list: finalQna,
+        role, difficulty, ats_score: score, qna_list: finalQna, email: user?.email
       });
+      
+      if (user && res.data.streak_count) {
+          user.streak_count = res.data.streak_count;
+          sessionStorage.setItem('user', JSON.stringify(user));
+      }
+      
       setEvalData(res.data);
+      
     } catch (err) {
       console.error('Eval error:', err);
-    } finally {
       setIsEvaluating(false);
     }
   };
@@ -323,18 +345,8 @@ const InterviewRoom = () => {
           )}
 
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-<<<<<<< HEAD
-            <button
-              className="btn-primary"
-              onClick={proceedToNext}
-              disabled={isFetchingNext}
-              style={{ padding: '16px 40px', fontSize: '1rem' }}
-            >
-              {isFetchingNext ? 'Loading next question...' : `Next Question (${currentStep} of ${totalQuestions})`}
-=======
             <button className="btn-primary" onClick={proceedToNext} disabled={isFetchingNext} style={{ padding: '16px 40px', fontSize: '1rem' }}>
               {isFetchingNext ? '⏳ Loading next question...' : `▶ Next Question (${currentStep} of ${totalQuestions})`}
->>>>>>> 109308d26f0a2a82a88204e258644f4caab9e7b0
             </button>
             <button onClick={() => finishInterview()} style={{ background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)', borderRadius: '12px', padding: '16px 24px', cursor: 'pointer' }}>
               End Early
@@ -378,12 +390,7 @@ const InterviewRoom = () => {
           </div>
 
           <div className="glass-panel" style={{ padding: '24px', overflowY: 'auto', maxHeight: '420px' }}>
-<<<<<<< HEAD
-            <h3 style={{ margin: '0 0 16px', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Analytics Timeline</h3>
-
-=======
             <h3 style={{ margin: '0 0 16px', color: 'var(--text-secondary)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>⏱ Analytics Timeline</h3>
->>>>>>> 109308d26f0a2a82a88204e258644f4caab9e7b0
             {fillerEvents.length === 0 ? (
               <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No filler words detected.</p>
             ) : (
@@ -484,9 +491,14 @@ const InterviewRoom = () => {
           ))}
         </div>
 
-        <div style={{ textAlign: 'center' }}>
-          <button className="btn-primary" style={{ padding: '16px 48px', fontSize: '1rem' }} onClick={() => navigate('/')}>
-            Start New Session
+        <div style={{ textAlign: 'center', display: 'flex', gap: '20px', justifyContent: 'center' }}>
+          {evalData && evalData._id && (
+            <button className="btn-primary pulse-dot" style={{ background: 'linear-gradient(135deg, #00d2ff, #3a7bd5)', padding: '16px 48px', fontSize: '1rem' }} onClick={() => navigate(`/result/${evalData._id}`)}>
+              🔗 Save & View Public Result
+            </button>
+          )}
+          <button className="btn-primary" style={{ padding: '16px 48px', fontSize: '1rem', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }} onClick={() => navigate('/setup')}>
+            Return to Setup
           </button>
         </div>
       </div>
@@ -589,45 +601,6 @@ const InterviewRoom = () => {
             )}
           </div>
 
-<<<<<<< HEAD
-          {/* Live Transcript Box */}
-          <div style={{
-            background: 'rgba(0,0,0,0.35)', border: '1px solid var(--glass-border)',
-            borderRadius: '12px', padding: '16px', minHeight: '130px', maxHeight: '200px', overflowY: 'auto'
-          }}>
-            <div style={{ color: 'var(--accent-cyan)', fontWeight: '600', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>
-              Live Transcript
-            </div>
-            <p style={{ margin: 0, lineHeight: '1.6', fontSize: '1rem' }}>
-              {liveTranscript || (
-                <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                  {isListening ? 'Listening... speak clearly' : 'Click "Start Answering" and speak your answer'}
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Controls */}
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={toggleListening}
-              className={isListening ? 'btn-danger' : 'btn-primary'}
-              style={{ flex: 1, padding: '18px', fontSize: '1rem' }}
-              disabled={isFetchingNext}
-            >
-              {isListening ? 'Stop Recording' : 'Start Answering'}
-            </button>
-            {isListening && (
-              <button
-                onClick={submitAnswer}
-                style={{
-                  flex: 1, padding: '18px', fontSize: '1rem', borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #00ff88, #00d2ff)', border: 'none',
-                  color: '#000', fontWeight: '700', cursor: 'pointer'
-                }}
-              >
-                Submit Answer
-=======
           {isIdle && (
             <button id="start-recording-btn" onClick={startRecording} className="btn-primary" disabled={isFetchingNext} style={{ padding: '18px', fontSize: '1rem', width: '100%' }}>
               🎙 Start Recording
@@ -638,7 +611,6 @@ const InterviewRoom = () => {
             <>
               <button id="stop-recording-btn" onClick={stopAndTranscribe} style={{ padding: '18px', fontSize: '1rem', width: '100%', borderRadius: '12px', background: 'linear-gradient(135deg, #ff4b2b, #ff8870)', border: 'none', color: 'white', fontWeight: '700', cursor: 'pointer' }}>
                 ⏹ Stop &amp; Transcribe
->>>>>>> 109308d26f0a2a82a88204e258644f4caab9e7b0
               </button>
             </>
           )}

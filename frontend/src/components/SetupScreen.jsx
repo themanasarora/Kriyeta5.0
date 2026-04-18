@@ -12,9 +12,7 @@ const SetupScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check for user session on mount
   useEffect(() => {
-    // Check if user passed via state or stored in session
     const storedUser = sessionStorage.getItem('user');
     const stateUser = location.state?.user;
     
@@ -24,7 +22,6 @@ const SetupScreen = () => {
     } else if (storedUser) {
       setUser(JSON.parse(storedUser));
     } else {
-      // No user session, redirect to login
       navigate('/login');
     }
   }, [location, navigate]);
@@ -43,8 +40,8 @@ const SetupScreen = () => {
     setLoading(true);
     const formData = new FormData();
     formData.append('resume', file);
-    formData.append('role', role); // Sent to Backend
-    formData.append('difficulty', difficulty); // Sent to Backend
+    formData.append('role', role);
+    formData.append('difficulty', difficulty);
 
     try {
       const response = await axios.post('http://127.0.0.1:5000/api/analyze-resume', formData);
@@ -68,20 +65,43 @@ const SetupScreen = () => {
 
   return (
     <div className="setup-container">
-      {/* User greeting & logout */}
       {user && (
         <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}>
           <span style={{ color: 'var(--text-secondary)' }}>
             Welcome, <strong style={{ color: 'var(--primary)' }}>{user.name || user.email}</strong>
           </span>
+          {user.github_score && (
+            <span style={{ 
+              background: 'rgba(0, 210, 255, 0.1)', 
+              color: 'var(--accent-cyan)', 
+              padding: '4px 10px', 
+              borderRadius: '20px', 
+              fontSize: '0.8rem',
+              border: '1px solid rgba(0, 210, 255, 0.3)'
+            }}>
+              GitHub: {user.github_score}
+            </span>
+          )}
+          {user.leetcode_score && (
+            <span style={{ 
+              background: 'rgba(255, 170, 0, 0.1)', 
+              color: '#FFAA00', 
+              padding: '4px 10px', 
+              borderRadius: '20px', 
+              fontSize: '0.8rem',
+              border: '1px solid rgba(255, 170, 0, 0.3)'
+            }}>
+              LeetCode: {user.leetcode_score}
+            </span>
+          )}
           <button 
             onClick={handleLogout}
             style={{
               padding: '8px 16px',
               background: 'transparent',
-              border: '1px solid var(--primary)',
+              border: '1px solid var(--accent-red)',
               borderRadius: '6px',
-              color: 'var(--primary)',
+              color: 'var(--accent-red)',
               cursor: 'pointer',
               fontSize: '14px'
             }}
