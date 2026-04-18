@@ -470,14 +470,6 @@ const LandingPage = () => {
             </Link>
             <div className="nav-actions">
               <button
-                className="landing-btn ghost"
-                onClick={() => navigate('/login')}
-                onMouseEnter={() => setIsHovering(true)}
-                onMouseLeave={() => setIsHovering(false)}
-              >
-                Sign in
-              </button>
-              <button
                 className="landing-btn primary"
                 onClick={() => navigate('/login')}
                 onMouseEnter={() => setIsHovering(true)}
@@ -507,14 +499,6 @@ const LandingPage = () => {
                   onMouseLeave={() => setIsHovering(false)}
                 >
                   Start Practicing Free
-                </button>
-                <button
-                  className="landing-btn ghost"
-                  onClick={() => navigate('/login')}
-                  onMouseEnter={() => setIsHovering(true)}
-                  onMouseLeave={() => setIsHovering(false)}
-                >
-                  Create Account
                 </button>
               </div>
             </section>

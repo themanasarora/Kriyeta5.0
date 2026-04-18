@@ -820,6 +820,15 @@ const InterviewRoom = () => {
             )}
           </div>
 
+          <div style={{ marginTop: 'auto', display: 'flex', gap: '10px' }}>
+            <button 
+              onClick={() => speak(question)} 
+              disabled={isFetchingNext || !question}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              🔊 Replay Question
+            </button>
+          </div>
         </div>
       </div>
 
@@ -865,8 +874,20 @@ const InterviewRoom = () => {
         )}
       </div>
 
-      {/* ── Bottom Control Dock ── */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', padding: '10px 0 20px' }}>
+      {/* ── Bottom Control Dock (Sticky) ── */}
+      <div style={{ 
+        position: 'sticky', 
+        bottom: '0', 
+        background: 'rgba(10, 10, 15, 0.8)', 
+        backdropFilter: 'blur(12px)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+        margin: '20px -24px -24px',
+        padding: '20px 24px',
+        display: 'flex', 
+        justifyContent: 'center', 
+        gap: '20px',
+        zIndex: 100
+      }}>
         {isIdle && (
           <button id="start-recording-btn" onClick={startRecording} className="btn-primary" disabled={isFetchingNext} style={{ padding: '16px 48px', fontSize: '1.1rem', borderRadius: '100px', minWidth: '280px', boxShadow: '0 8px 24px rgba(0, 210, 255, 0.3)' }}>
             🎙 Start Recording
