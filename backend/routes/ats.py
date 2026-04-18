@@ -53,7 +53,7 @@ def analyze_resume():
             f"Target Level: {difficulty}\n"
             f"ML Semantic Similarity Baseline: {onnx_score}/100\n"
             f"Resume Content: {resume_text[:4000]}\n\n"
-            "Task: Act as an expert HR analyst. Analyze the resume against the role requirements.\n"
+            "Task: Act as an Expert HR analyst. Analyze the resume against the role requirements.\n"
             f"The ML model has assigned a semantic similarity score of {onnx_score} as a baseline. "
             "Your job is to provide the final 'Adjusted Match Score' based on this baseline, but also accounting for: "
             "specific technical keywords, project relevance, experience depth, and overall resume quality.\n"
@@ -101,4 +101,4 @@ def analyze_resume():
         print("\n--- ❌ ATS ROUTE ERROR ---")
         traceback.print_exc()
         print("--------------------------\n")
-        return jsonify({"error": "Internal processing error", "details": str(e)}), 500
+        return jsonify({"error": "Internal processing error", "details": str(e)}), 500
