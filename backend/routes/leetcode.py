@@ -80,7 +80,7 @@ def analyze_leetcode():
         prompt = f"Analyze this LeetCode profile for recruiting: {username} has solved {total} total problems ({hard} Hard, {medium} Medium, {easy} Easy). Provide 2 sentences of highly specific feedback describing how a technical interviewer should perceive their Problem Solving capability."
         
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150
         )

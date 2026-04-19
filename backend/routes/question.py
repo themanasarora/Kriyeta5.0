@@ -59,20 +59,29 @@ def generate_question():
 
     has_previous = bool(prev_question and prev_answer)
 
+    current_step_int = int(step)
+    
     if has_previous:
+        behavioral_context = ""
+        if current_step_int == 3:
+            behavioral_context = ("\n-> IMPORTANT: This is Step 3. STOP asking technical questions. "
+                                 "Generate one Behavioral/Soft-Skill/Culture-fit question instead. "
+                                 "Examples: conflict resolution, teamwork, or motivation. Under 30 words.\n")
+        
         prompt = (
             f"You are an expert interviewer for a {role} position ({difficulty} level).\n"
             f"Candidate Resume Summary: {summary}\n"
-            f"{matrix_prompt}\n"
+            f"{matrix_prompt}{behavioral_context}\n"
             f"PREVIOUS QUESTION: {prev_question}\n"
             f"CANDIDATE'S ANSWER: {prev_answer}\n\n"
             f"Task: First, give brief constructive feedback on their answer (1-2 sentences, encouraging but honest). "
-            f"Then generate question #{step} — a deep, practical question that builds on what they said. "
+            f"Then generate question #{step} — a deep, practical question that builds on the flow. "
             f"Keep the next question under 30 words.\n\n"
             f"Respond ONLY in this exact JSON format:\n"
             '{{"answer_feedback": "<1-2 sentence feedback on their previous answer>", "next_question": "<the next interview question>"}}'
         )
     else:
+        # Initial question (Step 1)
         prompt = (
             f"You are an expert interviewer for a {role} position ({difficulty} level).\n"
             f"Candidate Resume Summary: {summary}\n"
@@ -88,7 +97,7 @@ def generate_question():
                 {"role": "system", "content": "You are a precise JSON-only interviewer. Always reply with the exact JSON format requested."},
                 {"role": "user", "content": prompt}
             ],
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"},
             temperature=0.7,
         )

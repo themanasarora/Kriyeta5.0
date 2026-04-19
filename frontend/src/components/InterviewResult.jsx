@@ -124,6 +124,33 @@ const InterviewResult = () => {
           </ul>
         </div>
       </div>
+      
+      {/* ── Communication & Culture Report ── */}
+      {(data.communication_score != null || data.culture_fit_score != null) && (
+        <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', padding: '30px', marginBottom: '30px' }}>
+          <h3 style={{ color: 'var(--accent-cyan)', margin: '0 0 25px 0', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+            🤝 Communication & Culture Report
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div style={{ background: 'rgba(56,189,248,0.05)', padding: '15px', borderRadius: '14px', border: '1px solid rgba(56,189,248,0.2)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'rgba(56,189,248,0.8)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '1px' }}>Communication</div>
+                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#38bdf8' }}>{data.communication_score}%</div>
+              </div>
+              <div style={{ background: 'rgba(167,139,250,0.05)', padding: '15px', borderRadius: '14px', border: '1px solid rgba(167,139,250,0.2)', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'rgba(167,139,250,0.8)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '1px' }}>Culture Fit</div>
+                <div style={{ fontSize: '2rem', fontWeight: '800', color: '#a78bfa' }}>{data.culture_fit_score}%</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', color: 'white' }}>Soft Skills Guidance</h4>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: '1.7', fontSize: '0.95rem', fontStyle: 'italic' }}>
+                "{data.soft_skills_feedback}"
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="glass-panel" style={{ width: '100%', maxWidth: '900px', padding: '30px' }}>
         <h3 style={{ color: 'var(--accent-cyan)', margin: '0 0 20px 0' }}>Session Transcript</h3>

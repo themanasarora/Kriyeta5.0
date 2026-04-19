@@ -26,12 +26,23 @@ def evaluate_interview():
     transcript_text = "\n".join([f"Q: {qna['question']}\nA: {qna['answer']}" for qna in qna_list])
 
     prompt = (
-        f"You are an expert technical interviewer for a {role} position ({difficulty} level).\n"
+        f"You are an expert technical and behavioral interviewer for a {role} position ({difficulty} level).\n"
         f"The candidate's initial ATS resume score was {ats_score}/100.\n"
         f"Below is the transcript of their interview:\n\n{transcript_text}\n\n"
-        "Task: Evaluate the candidate's performance based ON THEIR ANSWERS. "
+        "Task: Evaluate the candidate's performance. Focus on:\n"
+        "1. Technical Accuracy (coding/role-specific knowledge).\n"
+        "2. Communication Skills (clarity, confidence, and ability to explain complex ideas).\n"
+        "3. Cultural Fit (collaborative mindset, professional tone, and problem-solving approach).\n\n"
         "Return a strictly valid JSON object with EXACTLY the following keys:\n"
-        '{"final_score": <number 0-100>, "feedback_summary": "<2-3 sentence overview>", "strengths": ["<strength1>", "<strength2>"], "weaknesses": ["<area to improve>"]}'
+        "{\n"
+        '  "final_score": <number 0-100>,\n'
+        '  "feedback_summary": "<2-3 sentence overview>",\n'
+        '  "strengths": ["<strength1>", "<strength2>"],\n'
+        '  "weaknesses": ["<area to improve>"],\n'
+        '  "communication_score": <number 0-100>,\n'
+        '  "culture_fit_score": <number 0-100>,\n'
+        '  "soft_skills_feedback": "<comprehensive advice on communication and non-technical areas to improve for job readiness>"\n'
+        "}"
     )
 
     try:
@@ -40,7 +51,7 @@ def evaluate_interview():
                 {"role": "system", "content": "You are a precise JSON-only evaluator. Always reply with the exact requested JSON format."},
                 {"role": "user", "content": prompt}
             ],
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"},
             temperature=0.3
         )
@@ -61,6 +72,9 @@ def evaluate_interview():
             "feedback_summary": result.get("feedback_summary", "Evaluation complete."),
             "strengths": result.get("strengths", []),
             "weaknesses": result.get("weaknesses", []),
+            "communication_score": result.get("communication_score", 0),
+            "culture_fit_score": result.get("culture_fit_score", 0),
+            "soft_skills_feedback": result.get("soft_skills_feedback", "Focus on clear articulation and collaborative storytelling."),
             "qna_list": qna_list,
             "confidence_score": confidence_score,
             "confidence_label": confidence_label,

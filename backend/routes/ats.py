@@ -68,7 +68,7 @@ def analyze_resume():
                 {"role": "system", "content": "You are a specialized ATS Scoring & Feedback Engine. You combine ML metrics with HR reasoning."},
                 {"role": "user", "content": analysis_prompt}
             ],
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             response_format={"type": "json_object"},
             temperature=0.3
         )
