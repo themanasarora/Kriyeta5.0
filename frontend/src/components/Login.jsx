@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
 import InteractiveBackground from "./InteractiveBackground";
+import API_BASE_URL from '../api/config';
 
 // Client ID is read from .env  →  REACT_APP_GOOGLE_CLIENT_ID
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
@@ -28,7 +29,7 @@ const Login = () => {
   // ── Google One-Tap handler ───────────────────────────────────────
   const handleGoogleResponse = async (response) => {
     try {
-      const res = await axios.post("http://127.0.0.1:5000/api/google-login", {
+      const res = await axios.post(`${API_BASE_URL}/api/google-login`, {
         token: response.credential,
       });
       sessionStorage.setItem("user", JSON.stringify(res.data.user));
@@ -101,7 +102,7 @@ const Login = () => {
         ? { name: formData.name, email: formData.email, password: formData.password }
         : { email: formData.email, password: formData.password };
 
-      const response = await axios.post(`http://127.0.0.1:5000${endpoint}`, payload);
+      const response = await axios.post(`${API_BASE_URL}${endpoint}`, payload);
 
       if (isRegister) {
         alert("Account created! Please sign in.");

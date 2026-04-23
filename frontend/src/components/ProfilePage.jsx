@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import InteractiveBackground from './InteractiveBackground';
+import API_BASE_URL from '../api/config';
 
 const ProfilePage = () => {
   const [user, setUser] = useState(null);
@@ -22,7 +23,7 @@ const ProfilePage = () => {
 
   const fetchHistory = (email) => {
     setHistoryLoading(true);
-    axios.post(`http://127.0.0.1:5000/api/user-history`, { email })
+    axios.post(`${API_BASE_URL}/api/user-history`, { email })
       .then(res => {
         setHistoryData(res.data);
       })

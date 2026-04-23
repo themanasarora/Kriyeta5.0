@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
 import InteractiveBackground from './InteractiveBackground';
+import API_BASE_URL from '../api/config';
 
 const InterviewResult = () => {
   const { id } = useParams();
@@ -11,7 +12,7 @@ const InterviewResult = () => {
 
   useEffect(() => {
     // Fetch result publicly
-    axios.get(`http://127.0.0.1:5000/api/interview/${id}`)
+    axios.get(`${API_BASE_URL}/api/interview/${id}`)
       .then(res => {
         setData(res.data);
         setLoading(false);

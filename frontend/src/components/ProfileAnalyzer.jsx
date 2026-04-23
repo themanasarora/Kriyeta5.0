@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import InteractiveBackground from './InteractiveBackground';
+import API_BASE_URL from '../api/config';
 
 const ProfileAnalyzer = () => {
   const [activeTab, setActiveTab] = useState('github');
@@ -20,7 +21,7 @@ const ProfileAnalyzer = () => {
 
       const endpoint = activeTab === 'github' ? 'analyze-github' : 'analyze-leetcode';
 
-      const res = await axios.post(`http://127.0.0.1:5000/api/${endpoint}`, {
+      const res = await axios.post(`${API_BASE_URL}/api/${endpoint}`, {
         username,
         email: user?.email
       });

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useEyeContact } from '../hooks/useEyeContact';
 import InteractiveBackground from './InteractiveBackground';
+import API_BASE_URL from '../api/config';
 
 const FILLER_REGEX = /\b(um+|uh+|uhh+|hmm+|err+|like|you know|basically|literally|sort of|kind of|right\?|okay so)\b/gi;
 
@@ -220,7 +221,7 @@ const InterviewRoom = () => {
       const userStr = sessionStorage.getItem('user');
       const user = userStr ? JSON.parse(userStr) : null;
 
-      const res = await axios.post('http://127.0.0.1:5000/api/generate-question', {
+      const res = await axios.post(`${API_BASE_URL}/api/generate-question`, {
         summary, role, difficulty,
         currentStep: step,
         prev_question: prevQ,
@@ -282,7 +283,7 @@ const InterviewRoom = () => {
     try {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'answer.webm');
-      const res = await axios.post('http://127.0.0.1:5000/api/transcribe', formData, {
+      const res = await axios.post(`${API_BASE_URL}/api/transcribe`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 30000,
       });
@@ -365,7 +366,7 @@ const InterviewRoom = () => {
       try {
         const fullTranscript = finalQna.map(q => q.answer).join(' ');
         const totalFillers   = fillerEvents.length;
-        const confRes = await axios.post('http://127.0.0.1:5000/api/score-confidence', {
+        const confRes = await axios.post(`${API_BASE_URL}/api/score-confidence`, {
           transcript:   fullTranscript,
           filler_count: totalFillers,
         });
@@ -376,7 +377,7 @@ const InterviewRoom = () => {
         console.warn('Confidence scoring failed:', confErr);
       }
       // ── Evaluate interview ─────────────────────────────────────────────────
-      const res = await axios.post('http://127.0.0.1:5000/api/evaluate-interview', {
+      const res = await axios.post(`${API_BASE_URL}/api/evaluate-interview`, {
         role, difficulty, ats_score: score, qna_list: finalQna, email: user?.email,
         confidence_score: confidenceScore,
         confidence_label: confidenceLabel,

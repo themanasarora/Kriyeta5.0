@@ -3,8 +3,9 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv(os.path.join(os.path.dirname(__file__), "venv", ".env"))
+# Load environment variables (local dev uses venv/.env, production uses system env vars)
+env_path = os.path.join(os.path.dirname(__file__), "venv", ".env")
+load_dotenv(env_path)  # silently skips if file doesn't exist
 
 # Import Blueprints
 from routes.ats import ats_bp

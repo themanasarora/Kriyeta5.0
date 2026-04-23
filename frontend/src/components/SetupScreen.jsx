@@ -144,6 +144,7 @@ const RoleDropdown = ({ value, onChange }) => {
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import InteractiveBackground from "./InteractiveBackground";
+import API_BASE_URL from '../api/config';
 
 const SetupScreen = () => {
   const [file, setFile] = useState(null);
@@ -189,7 +190,7 @@ const SetupScreen = () => {
     formData.append('difficulty', difficulty);
 
     try {
-      const response = await axios.post('http://127.0.0.1:5000/api/analyze-resume', formData);
+      const response = await axios.post(`${API_BASE_URL}/api/analyze-resume`, formData);
 
       navigate('/ats', {
         state: {

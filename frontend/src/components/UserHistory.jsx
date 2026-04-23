@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../api/config';
 
 const UserHistory = () => {
   const [data, setData] = useState(null);
@@ -15,7 +16,7 @@ const UserHistory = () => {
     }
     const user = JSON.parse(userStr);
 
-    axios.post(`http://127.0.0.1:5000/api/user-history`, { email: user.email })
+    axios.post(`${API_BASE_URL}/api/user-history`, { email: user.email })
       .then(res => {
         setData(res.data);
         setLoading(false);

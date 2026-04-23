@@ -1,5 +1,5 @@
 import onnxruntime as ort
-from transformers import AutoTokenizer
+from tokenizers import Tokenizer
 import numpy as np
 import os
 from sklearn.metrics.pairwise import cosine_similarity
@@ -12,7 +12,10 @@ class ATSEngine:
                 model_path = os.path.join(base_dir, "onnx_model")
             
             print(f"[ATS] Loading tokenizer from {model_path}...")
-            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            tokenizer_path = os.path.join(model_path, "tokenizer.json")
+            self.tokenizer = Tokenizer.from_file(tokenizer_path)
+            self.tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=512)
+            self.tokenizer.enable_truncation(max_length=512)
             
             print(f"[ATS] Loading ONNX model from {model_path} (CPU Mode)...")
             # Explicitly use CPU to avoid crashes on mismatched GPU drivers/hardware
@@ -32,15 +35,16 @@ class ATSEngine:
 
 
     def get_embedding(self, text):
-        inputs = self.tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors="np")
+        encoding = self.tokenizer.encode(text)
+        input_ids = np.array([encoding.ids], dtype=np.int64)
+        attention_mask = np.array([encoding.attention_mask], dtype=np.int64)
+        token_type_ids = np.array([encoding.type_ids], dtype=np.int64)
         
         onnx_inputs = {
-            "input_ids": inputs["input_ids"].astype(np.int64),
-            "attention_mask": inputs["attention_mask"].astype(np.int64)
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "token_type_ids": token_type_ids,
         }
-        
-        if "token_type_ids" in inputs:
-            onnx_inputs["token_type_ids"] = inputs["token_type_ids"].astype(np.int64)
             
         outputs = self.session.run(None, onnx_inputs)
         
